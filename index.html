@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Family Tree</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f0f2f5;
+  color: #222;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── TOOLBAR ── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #fff;
+  border-bottom: 1px solid #dde1e7;
+  flex-shrink: 0;
+  z-index: 100;
+  flex-wrap: wrap;
+}
+
+#toolbar h1 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-right: 8px;
+}
+
+.tb-sep { width: 1px; height: 24px; background: #dde1e7; margin: 0 4px; }
+
+.tb-btn {
+  background: #f0f2f5;
+  border: 1px solid #dde1e7;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.tb-btn:hover { background: #e2e6ea; }
+.tb-btn.primary {
+  background: #4361ee;
+  color: #fff;
+  border-color: #4361ee;
+}
+.tb-btn.primary:hover { background: #3451d1; }
+
+#zoom-level {
+  font-size: 12px;
+  color: #666;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* ── VIEWPORT ── */
+#viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+}
+#viewport.grabbing { cursor: grabbing; }
+
+#canvas {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: 0 0;
+}
+
+/* ── SVG CONNECTOR LAYER ── */
+#connectors {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.connector { fill: none; stroke: #b0bec5; stroke-width: 1.5px; }
+.couple-line { fill: none; stroke: #607d8b; stroke-width: 2px; }
+
+/* ── MEMBER CARD ── */
+.card {
+  position: absolute;
+  width: 140px;
+  background: #fff;
+  border-radius: 8px;
+  border: 2px solid #dde1e7;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.1s;
+  user-select: none;
+}
+.card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); transform: translateY(-1px); }
+.card.male    { border-color: #90caf9; }
+.card.female  { border-color: #f48fb1; }
+.card.selected { box-shadow: 0 0 0 3px #4361ee; }
+
+.card-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+.card-surname {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+}
+.card-dates {
+  font-size: 10px;
+  color: #888;
+}
+.card-gender-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.card-gender-dot.male   { background: #42a5f5; }
+.card-gender-dot.female { background: #ec407a; }
+.card-gender-dot.other  { background: #ab47bc; }
+
+.collapse-btn {
+  position: absolute;
+  right: 4px; top: 4px;
+  width: 16px; height: 16px;
+  background: #e8eaf6;
+  border: 1px solid #c5cae9;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  color: #3949ab;
+  z-index: 1;
+}
+.collapse-btn:hover { background: #c5cae9; }
+
+/* ── EMPTY STATE ── */
+#empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #888;
+  pointer-events: none;
+}
+#empty-state h2 { font-size: 22px; font-weight: 600; color: #555; }
+#empty-state p  { font-size: 14px; max-width: 320px; text-align: center; line-height: 1.5; }
+#empty-icon { font-size: 56px; }
+
+/* ── SIDE CARD ── */
+#side-card {
+  position: fixed;
+  top: 0; right: -380px;
+  width: 360px;
+  height: 100vh;
+  background: #fff;
+  box-shadow: -4px 0 20px rgba(0,0,0,0.12);
+  z-index: 200;
+  transition: right 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#side-card.open { right: 0; }
+
+#side-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+}
+#sc-name { font-size: 18px; font-weight: 700; line-height: 1.3; }
+#sc-surname { font-size: 14px; color: #666; margin-top: 2px; }
+#sc-close {
+  background: none; border: none; font-size: 20px; cursor: pointer;
+  color: #999; padding: 0 4px; line-height: 1; flex-shrink: 0;
+}
+#sc-close:hover { color: #333; }
+
+#side-card-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.sc-section { margin-bottom: 16px; }
+.sc-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+.sc-value { font-size: 14px; color: #333; line-height: 1.4; }
+.sc-value.muted { color: #999; font-style: italic; }
+
+.sc-relatives { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.sc-rel-btn {
+  background: #f0f2f5;
+  border: 1px solid #dde1e7;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.1s;
+}
+.sc-rel-btn:hover { background: #e2e6ea; }
+.sc-rel-btn.male   { border-color: #90caf9; }
+.sc-rel-btn.female { border-color: #f48fb1; }
+
+.sc-gender-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.sc-gender-badge.male   { background: #e3f2fd; color: #1565c0; }
+.sc-gender-badge.female { background: #fce4ec; color: #c62828; }
+.sc-gender-badge.other  { background: #f3e5f5; color: #6a1b9a; }
+
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <h1>🌳 Family Tree</h1>
+  <div class="tb-sep"></div>
+  <label class="tb-btn primary" style="cursor:pointer">
+    Upload JSON
+    <input type="file" id="file-input" accept=".json" style="display:none">
+  </label>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-zoom-in">+ Zoom In</button>
+  <span id="zoom-level">100%</span>
+  <button class="tb-btn" id="btn-zoom-out">− Zoom Out</button>
+  <button class="tb-btn" id="btn-zoom-reset">Reset View</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-expand-all">Expand All</button>
+  <button class="tb-btn" id="btn-collapse-all">Collapse All</button>
+  <div class="tb-sep"></div>
+  <span id="family-name-label" style="font-size:13px;color:#888;"></span>
+</div>
+
+<!-- VIEWPORT -->
+<div id="viewport">
+  <div id="canvas">
+    <svg id="connectors" width="1" height="1"></svg>
+  </div>
+  <div id="empty-state">
+    <div id="empty-icon">🌳</div>
+    <h2>No family tree loaded</h2>
+    <p>Click <strong>Upload JSON</strong> to load a family data file.</p>
+  </div>
+</div>
+
+<!-- SIDE CARD -->
+<div id="side-card">
+  <div id="side-card-header">
+    <div>
+      <div id="sc-name">—</div>
+      <div id="sc-surname"></div>
+    </div>
+    <button id="sc-close">✕</button>
+  </div>
+  <div id="side-card-body">
+    <div class="sc-section">
+      <div class="sc-label">Gender</div>
+      <div id="sc-gender" class="sc-value"></div>
+    </div>
+    <div class="sc-section">
+      <div class="sc-label">Born</div>
+      <div id="sc-born" class="sc-value"></div>
+    </div>
+    <div class="sc-section" id="sc-death-section">
+      <div class="sc-label">Died</div>
+      <div id="sc-died" class="sc-value"></div>
+    </div>
+    <div class="sc-section" id="sc-parents-section">
+      <div class="sc-label">Parents</div>
+      <div id="sc-parents" class="sc-relatives"></div>
+    </div>
+    <div class="sc-section" id="sc-partner-section">
+      <div class="sc-label">Partner(s)</div>
+      <div id="sc-partners" class="sc-relatives"></div>
+    </div>
+    <div class="sc-section" id="sc-children-section">
+      <div class="sc-label">Children</div>
+      <div id="sc-children" class="sc-relatives"></div>
+    </div>
+    <div class="sc-section" id="sc-notes-section">
+      <div class="sc-label">Notes</div>
+      <div id="sc-notes" class="sc-value"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// MODULE: data.js — parse & normalize
+// ═══════════════════════════════════════════════════════
+function parseFamily(raw) {
+  if (!raw || !raw.family || !Array.isArray(raw.family.members)) {
+    throw new Error('Invalid format: expected { family: { members: [...] } }');
+  }
+  const members = raw.family.members;
+  const byId = {};
+  members.forEach(m => { byId[m.id] = m; });
+
+  // clean each member
+  const clean = members.map(m => ({
+    id: m.id,
+    firstName: (m.firstName || '').trim(),
+    lastName:  (m.lastName  || '').trim(),
+    birthDate: (m.birthDate || '').toString().trim(),
+    deathDate: m.deathDate == null ? null : (m.deathDate || '').toString().trim(),
+    gender: m.gender || 'other',
+    parents: (m.parents || []).filter(p => p && p.trim() && byId[p.trim()]),
+    photo: m.photo || null,
+    notes: (m.notes || '').trim(),
+  }));
+
+  const cleanById = {};
+  clean.forEach(m => { cleanById[m.id] = m; });
+
+  return { name: raw.family.name || '', members: clean, byId: cleanById };
+}
+
+function yearOf(dateStr) {
+  if (!dateStr || dateStr === 'null') return null;
+  const m = dateStr.match(/^(\d{4})/);
+  return m ? parseInt(m[1]) : null;
+}
+
+function formatDate(dateStr) {
+  return (!dateStr || dateStr === 'null') ? null : dateStr;
+}
+
+function displayDates(m) {
+  const by = yearOf(m.birthDate);
+  const dy = m.deathDate === null ? null : yearOf(m.deathDate);
+  if (!by && dy === null) return '';
+  if (!by) return `?–${dy}`;
+  if (dy === null) return `b. ${by}`;
+  return `${by}–${dy}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE: model.js — couple inference, levels
+// ═══════════════════════════════════════════════════════
+function buildModel(family) {
+  const { members, byId } = family;
+
+  // children map
+  const childrenOf = {};
+  members.forEach(m => { childrenOf[m.id] = []; });
+  members.forEach(m => {
+    m.parents.forEach(pid => childrenOf[pid].push(m.id));
+  });
+
+  // sort each parent's children by birth year, oldest first (no birthday → last)
+  Object.keys(childrenOf).forEach(pid =>
+    childrenOf[pid].sort((a, b) => birthRank(byId, a) - birthRank(byId, b) || (a < b ? -1 : 1)));
+
+  // couple inference: all unordered pairs that share at least one child
+  const coupleMap = {}; // "a|b" -> { ids:[a,b], children:[] }
+  members.forEach(m => {
+    if (m.parents.length === 2) {
+      const key = [m.parents[0], m.parents[1]].sort().join('|');
+      if (!coupleMap[key]) coupleMap[key] = { ids: [...m.parents].sort(), children: [] };
+      coupleMap[key].children.push(m.id);
+    }
+  });
+  const couples = Object.values(coupleMap);
+
+  // partner lookup: id -> partner id (or null)
+  const partnerOf = {};
+  couples.forEach(c => {
+    partnerOf[c.ids[0]] = c.ids[1];
+    partnerOf[c.ids[1]] = c.ids[0];
+  });
+
+  // level assignment: bidirectional BFS so a generation is a *relative* constraint,
+  // not absolute depth-from-root. Propagate down (child = parent+1), UP (parent = child-1),
+  // and tie co-parents to the same row — all in one pass. This keeps a sparsely-documented
+  // ancestor (e.g. one with no recorded parents) sitting one row above their child instead
+  // of floating at the top when the spouse's branch is documented much deeper.
+  const level = {};
+  members.forEach(start => {
+    if (level[start.id] !== undefined) return;     // already placed by an earlier BFS
+    const queue = [[start.id, 0]];
+    level[start.id] = 0;
+    while (queue.length) {
+      const [cur, lv] = queue.shift();
+      childrenOf[cur].forEach(c => {               // down
+        if (level[c] === undefined) { level[c] = lv + 1; queue.push([c, lv + 1]); }
+      });
+      byId[cur].parents.forEach(p => {             // up
+        if (level[p] === undefined) { level[p] = lv - 1; queue.push([p, lv - 1]); }
+      });
+      const partner = partnerOf[cur];              // spouse → same row
+      if (partner && level[partner] === undefined) { level[partner] = lv; queue.push([partner, lv]); }
+    }
+  });
+
+  // normalize so the top generation is 0
+  const minL = Math.min(...members.map(m => level[m.id]));
+  members.forEach(m => { level[m.id] -= minL; });
+
+  // safety pass: guarantee child strictly below parents and couples share a row.
+  // Seeded by the BFS result (not all-zeros), so well-documented asymmetries no longer
+  // float; this only ever nudges a child down minimally on contradictory data.
+  let changed = true;
+  for (let iter = 0; iter < 60 && changed; iter++) {
+    changed = false;
+    members.forEach(m => {
+      m.parents.forEach(pid => {
+        if (level[m.id] <= level[pid]) {
+          level[m.id] = level[pid] + 1;
+          changed = true;
+        }
+      });
+    });
+    // equalize couples
+    couples.forEach(c => {
+      const mx = Math.max(level[c.ids[0]], level[c.ids[1]]);
+      c.ids.forEach(id => {
+        if (level[id] !== mx) { level[id] = mx; changed = true; }
+      });
+    });
+  }
+
+  return { childrenOf, couples, coupleMap, partnerOf, level };
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE: layout.js — compute x/y
+// ═══════════════════════════════════════════════════════
+const CARD_W = 140, CARD_H = 68, V_GAP = 70, ROW_H = CARD_H + V_GAP;
+const COUPLE_DX = CARD_W + 50;                 // left→right offset between partners (card + gap)
+const SIB_GAP   = 24;                          // gap between siblings of the same parents
+const UNIT_GAP  = Math.round(CARD_W * 0.5);    // gap between different families ≈ 70px
+
+// shared birth-year rank helper used for sibling sorting in both buildModel and computeLayout
+const birthRank = (byId, id) => { const yr = yearOf(byId[id].birthDate); return yr == null ? Infinity : yr; };
+
+// PAVA isotonic regression: nondecreasing fit closest to a[] (L2-optimal)
+function pava(a) {
+  const blocks = [];
+  a.forEach(val => {
+    let b = { v: val, w: 1, n: 1 };
+    while (blocks.length && blocks[blocks.length - 1].v >= b.v) {
+      const p = blocks.pop();
+      const w = p.w + b.w;
+      b = { v: (p.v * p.w + b.v * b.w) / w, w, n: p.n + b.n };
+    }
+    blocks.push(b);
+  });
+  const out = [];
+  blocks.forEach(b => { for (let i = 0; i < b.n; i++) out.push(b.v); });
+  return out;
+}
+
+function buildLayout(family, model) {
+  const { members, byId } = family;
+  const { childrenOf, couples, coupleMap, partnerOf, level } = model;
+  const collapsed = new Set(); // ids whose subtree is hidden
+
+  function computeLayout(collapsedSet) {
+    // group members by level
+    const levels = {};
+    let maxLevel = 0;
+    members.forEach(m => {
+      const l = level[m.id];
+      if (!levels[l]) levels[l] = [];
+      levels[l].push(m.id);
+      if (l > maxLevel) maxLevel = l;
+    });
+
+    // determine which nodes are visible
+    // a node is hidden if any ancestor (direct chain) is collapsed
+    const hidden = new Set();
+    function hideChildren(id) {
+      childrenOf[id].forEach(cid => {
+        if (!hidden.has(cid)) {
+          hidden.add(cid);
+          // also hide their partner if all parents hidden
+          const partner = partnerOf[cid];
+          if (partner) {
+            const partnerParents = byId[partner].parents;
+            const allParentsHidden = partnerParents.every(p => hidden.has(p) || collapsedSet.has(p));
+            if (allParentsHidden || partnerParents.length === 0) {
+              hidden.add(partner);
+            }
+          }
+          hideChildren(cid);
+        }
+      });
+    }
+    collapsedSet.forEach(id => hideChildren(id));
+
+    // ── x positions ──────────────────────────────────────────────
+    // Two stages: (1) order each generation to minimise edge crossings, so
+    // siblings and couples sit next to each other (this is what stops connectors
+    // from different branches crossing/overlapping); (2) assign x with an
+    // order-preserving, centred spacing solver (PAVA), so parents stay centred
+    // over their children without any cards overlapping.
+    const x = {};
+    const y = {};
+    members.forEach(m => { y[m.id] = level[m.id] * ROW_H + 20; });
+
+    const visIds = members.filter(m => !hidden.has(m.id)).map(m => m.id);
+
+    // Group each visible person into a "unit": a couple (2 cards) or a single (1).
+    const visPartner = id => {
+      const p = partnerOf[id];
+      return (p && !hidden.has(p) && level[p] === level[id]) ? p : null;
+    };
+    const rank = z => (byId[z].gender === 'male' ? '0:' : '1:') + z; // male left, then id
+    const unitOf = {}, unitMembers = {}, unitLevel = {};
+    visIds.forEach(id => {
+      if (unitOf[id]) return;
+      const p = visPartner(id);
+      if (p && !unitOf[p]) {
+        const pair = rank(id) <= rank(p) ? [id, p] : [p, id];
+        const key = 'U:' + pair.join('+');
+        unitOf[pair[0]] = key; unitOf[pair[1]] = key;
+        unitMembers[key] = pair; unitLevel[key] = level[id];
+      } else {
+        const key = 'S:' + id;
+        unitOf[id] = key; unitMembers[key] = [id]; unitLevel[key] = level[id];
+      }
+    });
+    const uWidth  = u => unitMembers[u].length === 2 ? COUPLE_DX + CARD_W : CARD_W;
+    const uCenter = u => x[unitMembers[u][0]] + uWidth(u) / 2;
+    const setUCenter = (u, c) => {
+      const mm = unitMembers[u];
+      x[mm[0]] = c - uWidth(u) / 2;
+      if (mm.length === 2) x[mm[1]] = x[mm[0]] + COUPLE_DX;
+    };
+    const childUnits = u => {
+      const out = [];
+      unitMembers[u].forEach(mid => childrenOf[mid].forEach(c => {
+        if (hidden.has(c)) return;
+        const cu = unitOf[c];
+        if (cu !== u && !out.includes(cu)) out.push(cu);
+      }));
+      return out;
+    };
+    const parentUnits = u => {
+      const out = [];
+      unitMembers[u].forEach(mid => byId[mid].parents.forEach(p => {
+        if (hidden.has(p)) return;
+        const pu = unitOf[p];
+        if (pu && pu !== u && !out.includes(pu)) out.push(pu);
+      }));
+      return out;
+    };
+
+    // Dual gap: siblings of the same parents pack tight; unrelated units get a wider channel
+    const parentKey = id => byId[id].parents.slice().sort().join('|');
+    const areSiblings = (a, b) => { const p = parentKey(a); return p.length > 0 && p === parentKey(b); };
+    const gapBetween = (leftU, rightU) => {
+      const lm = unitMembers[leftU], rm = unitMembers[rightU];
+      return areSiblings(lm[lm.length - 1], rm[0]) ? SIB_GAP : UNIT_GAP;
+    };
+    const familyKeyOf = u => parentKey(unitMembers[u][0]) || ('Z:' + u);
+    const unitBirthOf = u => birthRank(byId, unitMembers[u][0]);
+
+    // units grouped by level, deterministic initial order
+    const order = {};
+    Object.keys(unitMembers).forEach(u => { (order[unitLevel[u]] = order[unitLevel[u]] || []).push(u); });
+    const sortedLv = Object.keys(order).map(Number).sort((a, b) => a - b);
+    sortedLv.forEach(lv =>
+      order[lv].sort((a, b) => {
+        const ka = familyKeyOf(a), kb = familyKeyOf(b);
+        if (ka !== kb) return ka < kb ? -1 : 1;
+        return unitBirthOf(a) - unitBirthOf(b) || (a < b ? -1 : 1);
+      })
+    );
+
+    const indexMap = lv => {
+      const m = {}; (order[lv] || []).forEach((u, i) => { m[u] = i; }); return m;
+    };
+    const median = vals => {
+      if (!vals.length) return null;
+      const v = vals.slice().sort((a, b) => a - b), n = v.length;
+      return n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
+    };
+    // crossing-reduction sweeps (median heuristic); couples move as one unit
+    for (let sweep = 0; sweep < 20; sweep++) {
+      const down = sweep % 2 === 0;
+      const seq = down ? sortedLv.slice(1) : sortedLv.slice(0, -1).reverse();
+      seq.forEach(lv => {
+        const adj = indexMap(down ? lv - 1 : lv + 1);
+        const key = {};
+        order[lv].forEach((u, i) => {
+          const nb = (down ? parentUnits(u) : childUnits(u)).map(z => adj[z]).filter(v => v !== undefined);
+          const med = median(nb);
+          key[u] = med === null ? i : med;
+        });
+        order[lv] = order[lv]
+          .map((u, i) => [key[u], i, u])
+          .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+          .map(t => t[2]);
+      });
+    }
+
+    // Sibling cohesion pass: keep each family's children contiguous and in birth order.
+    //
+    // The crossing-reduction sweeps can scatter siblings because:
+    //   • childless siblings get a stale "current index" key while siblings with children
+    //     get a fresh median-of-children key — causing drift.
+    //   • couples are keyed to only ONE partner's family, leaving the other partner's
+    //     siblings stranded on the far side.
+    //
+    // Fix: register every couple unit in BOTH partners' families. Couples that bridge two
+    // families get sort key = average of the two families' medians, so they land naturally
+    // BETWEEN the two sibling groups instead of inside one of them.
+    sortedLv.forEach(lv => {
+      // Build family-position index: each unit registers under all its members' parent keys
+      const fPos = {};
+      order[lv].forEach((u, i) => {
+        const seenFks = new Set();
+        unitMembers[u].forEach(mid => {
+          const fk = parentKey(mid) || ('Z:' + u);
+          if (!seenFks.has(fk)) { seenFks.add(fk); (fPos[fk] = fPos[fk] || []).push(i); }
+        });
+      });
+      // Median position for each family group
+      const fMed = {};
+      Object.entries(fPos).forEach(([fk, pos]) => {
+        const s = pos.slice().sort((a, b) => a - b), n = s.length;
+        fMed[fk] = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+      });
+      // Sort key: average of all family medians the unit belongs to.
+      // Singles → one family's median. Bridging couples → midpoint of both families.
+      const unitSortKey = u => {
+        const fks = [...new Set(unitMembers[u].map(mid => parentKey(mid) || ('Z:' + u)))];
+        const meds = fks.map(fk => fMed[fk]).filter(v => v !== undefined);
+        return meds.length ? meds.reduce((s, v) => s + v, 0) / meds.length : Infinity;
+      };
+      order[lv].sort((a, b) => {
+        const ska = unitSortKey(a), skb = unitSortKey(b);
+        if (Math.abs(ska - skb) > 0.001) return ska - skb;
+        // Equal sort keys: keep siblings of the same family together before
+        // falling back to birth order. Without this, two families whose fMed
+        // values accidentally coincide get interleaved by birth year, splitting
+        // siblings (e.g. nikita/stefa split by dasha when fMed['ira']==fMed['alla']).
+        const fka = familyKeyOf(a), fkb = familyKeyOf(b);
+        if (fka !== fkb) return fka < fkb ? -1 : 1;
+        return unitBirthOf(a) - unitBirthOf(b) || (a < b ? -1 : 1);
+      });
+    });
+
+    // seed x left→right in the chosen order
+    sortedLv.forEach(lv => {
+      let cur = 20;
+      order[lv].forEach((u, i) => {
+        const mm = unitMembers[u];
+        x[mm[0]] = cur;
+        if (mm.length === 2) x[mm[1]] = cur + COUPLE_DX;
+        const nxt = order[lv][i + 1];
+        cur += uWidth(u) + (nxt ? gapBetween(u, nxt) : UNIT_GAP);
+      });
+    });
+
+    // place a level at target centres while keeping order + min separation
+    const resolve = (lv, targets) => {
+      const us = order[lv], n = us.length;
+      if (!n) return;
+      const S = [0];
+      for (let k = 1; k < n; k++)
+        S[k] = S[k - 1] + (uWidth(us[k - 1]) + uWidth(us[k])) / 2 + gapBetween(us[k - 1], us[k]);
+      const a = us.map((u, k) => targets[u] - S[k]);
+      const b = pava(a);
+      us.forEach((u, k) => setUCenter(u, b[k] + S[k]));
+    };
+    // centre each unit over the given neighbours (children or parents), then resolve
+    const centerOver = (lv, neighbourUnits) => {
+      const tg = {};
+      order[lv].forEach(u => {
+        const nb = neighbourUnits(u);
+        tg[u] = nb.length ? nb.reduce((s, z) => s + uCenter(z), 0) / nb.length : uCenter(u);
+      });
+      resolve(lv, tg);
+    };
+    // alternate bottom-up (parents over children) and top-down (children under parents)
+    for (let iter = 0; iter < 8; iter++) {
+      for (let i = sortedLv.length - 1; i >= 0; i--) centerOver(sortedLv[i], childUnits);
+      for (let i = 0; i < sortedLv.length; i++) centerOver(sortedLv[i], parentUnits);
+    }
+
+    // Snap pass: center each family's children as a rigid block under the parents.
+    // Top-down so parent positions are stable before we process their children.
+    // Children claimed by multiple parents (intermarriage) receive the average desired shift.
+    for (let si = 0; si < sortedLv.length - 1; si++) {
+      const childLv = sortedLv[si + 1];
+      if (!order[childLv] || !order[childLv].length) continue;
+      const shiftAcc = {}, shiftCnt = {};
+      order[childLv].forEach(u => { shiftAcc[u] = 0; shiftCnt[u] = 0; });
+      order[sortedLv[si]].forEach(pu => {
+        const kids = childUnits(pu).filter(cu => unitLevel[cu] === childLv);
+        if (!kids.length) return;
+        const parentMid = uCenter(pu);
+        const allMs = kids.flatMap(cu => unitMembers[cu]);
+        const gl = Math.min(...allMs.map(mid => x[mid]));
+        const gr = Math.max(...allMs.map(mid => x[mid])) + CARD_W;
+        const shift = parentMid - (gl + gr) / 2;
+        kids.forEach(cu => { shiftAcc[cu] += shift; shiftCnt[cu]++; });
+      });
+      let anyMoved = false;
+      order[childLv].forEach(u => {
+        if (!shiftCnt[u]) return;
+        const avg = shiftAcc[u] / shiftCnt[u];
+        if (Math.abs(avg) >= 1) { unitMembers[u].forEach(mid => { x[mid] += avg; }); anyMoved = true; }
+      });
+      if (anyMoved) {
+        const tg = {};
+        order[childLv].forEach(u => { tg[u] = uCenter(u); });
+        resolve(childLv, tg);
+      }
+    }
+
+    // normalize so the leftmost card sits at x = 20
+    if (visIds.length) {
+      const minX = Math.min(...visIds.map(id => x[id]));
+      visIds.forEach(id => { x[id] += 20 - minX; });
+    }
+
+    // canvas size
+    const xs = members.filter(m => !hidden.has(m.id) && x[m.id] !== undefined).map(m => x[m.id]);
+    const ys = members.filter(m => !hidden.has(m.id)).map(m => y[m.id]);
+    const W = (xs.length ? Math.max(...xs) + CARD_W : 800) + 40;
+    const H = (ys.length ? Math.max(...ys) + CARD_H : 600) + 60;
+
+    return { x, y, hidden, W, H };
+  }
+
+  return { computeLayout, collapsed };
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE: render.js — draw cards + SVG connectors
+// ═══════════════════════════════════════════════════════
+function render(family, model, layoutState) {
+  const { members, byId } = family;
+  const { childrenOf, couples, partnerOf, level } = model;
+  const { collapsed } = layoutState;
+  const { x, y, hidden, W, H } = layoutState.computeLayout(collapsed);
+
+  const canvas = document.getElementById('canvas');
+  const svg    = document.getElementById('connectors');
+
+  // clear
+  canvas.querySelectorAll('.card').forEach(el => el.remove());
+  svg.innerHTML = '';
+  svg.setAttribute('width',  W);
+  svg.setAttribute('height', H);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  // ── CONNECTORS ──
+  function cx(id) { return x[id] + CARD_W / 2; }
+  function cy(id) { return y[id] + CARD_H / 2; }
+  function cardBottom(id) { return y[id] + CARD_H; }
+  function cardTop(id)    { return y[id]; }
+
+  function addPath(d) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('class', 'connector');
+    svg.appendChild(path);
+  }
+
+  // couple lines
+  couples.forEach(c => {
+    const [a, b] = c.ids;
+    if (hidden.has(a) || hidden.has(b)) return;
+    const ax = x[a] + CARD_W, bx = x[b];
+    const midY = y[a] + CARD_H / 2;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', ax); line.setAttribute('y1', midY);
+    line.setAttribute('x2', bx); line.setAttribute('y2', midY);
+    line.setAttribute('class', 'couple-line');
+    svg.appendChild(line);
+  });
+
+  // parent→child connectors ── three-pass approach:
+  //  1. Build groups keyed by parent set.
+  //  2. Compute junction + bar extents for every group, then run sweep-line
+  //     interval graph coloring per (parent_level → child_level) pair so that
+  //     any two groups whose bars overlap in X are placed in different Y lanes.
+  //     Lanes are spread 30 %–70 % of trunk height, guaranteeing clear separation.
+  //  3. Draw: trunk → sibling bar → drops.
+
+  // ── Pass 1: build groups ──
+  const groups = {};
+  members.forEach(m => {
+    if (hidden.has(m.id)) return;
+    const visParents = m.parents.filter(p => !hidden.has(p));
+    if (visParents.length === 0) return;
+    const key = visParents.slice().sort().join('|');
+    if (!groups[key]) groups[key] = { parents: visParents, children: [], key };
+    groups[key].children.push(m.id);
+  });
+
+  // ── Pass 2: geometry + lane assignment ──
+  Object.values(groups).forEach(g => {
+    const ps = g.parents;
+    if (ps.length >= 2) {
+      const sorted = ps.slice().sort((a, b) => x[a] - x[b]);
+      g.junctionX = (x[sorted[0]] + CARD_W + x[sorted[sorted.length - 1]]) / 2;
+      g.junctionY = y[sorted[0]] + CARD_H / 2;
+    } else {
+      g.junctionX = cx(ps[0]);
+      g.junctionY = cardBottom(ps[0]);
+    }
+    g.childTopY = Math.min(...g.children.map(c => cardTop(c)));
+    g.trunkH    = Math.max(g.childTopY - g.junctionY, 1);
+    const centers = g.children.map(c => cx(c));
+    g.barLeft = Math.min(...centers);
+    g.barRight = Math.max(...centers);
+    g.barL = Math.min(g.barLeft, g.junctionX); // extend toward junction if needed
+    g.barR = Math.max(g.barRight, g.junctionX);
+  });
+
+  // Sweep-line coloring: for every (parent_lv → child_lv) pair, sort groups by
+  // their left bar edge and greedily assign each to the first lane whose rightmost
+  // bar ends before the new bar starts. Groups that don't overlap get lane 0 (same Y).
+  const lvPairs = {};
+  Object.values(groups).forEach(g => {
+    const pk = `${level[g.parents[0]]}|${level[g.children[0]]}`;
+    (lvPairs[pk] = lvPairs[pk] || []).push(g);
+  });
+  Object.values(lvPairs).forEach(gs => {
+    const sorted = gs.slice().sort((a, b) => a.barL - b.barL);
+    const laneEndX = []; // rightmost X reached by each lane
+    sorted.forEach(g => {
+      let lane = 0;
+      while (lane < laneEndX.length && laneEndX[lane] >= g.barL - 2) lane++;
+      g.lane = lane;
+      if (lane < laneEndX.length) laneEndX[lane] = g.barR;
+      else laneEndX.push(g.barR);
+    });
+    const numLanes = laneEndX.length;
+    gs.forEach(g => {
+      // Spread lanes evenly from 30 % to 70 % of trunk height
+      const t = numLanes <= 1 ? 0.5 : 0.30 + (g.lane / (numLanes - 1)) * 0.40;
+      g.sibBarY = g.junctionY + g.trunkH * t;
+    });
+  });
+
+  // ── Pass 3: draw ──
+  Object.values(groups).forEach(g => {
+    addPath(`M ${g.junctionX} ${g.junctionY} L ${g.junctionX} ${g.sibBarY}`);
+    if (g.barR - g.barL > 0.5)
+      addPath(`M ${g.barL} ${g.sibBarY} L ${g.barR} ${g.sibBarY}`);
+    g.children.forEach(c =>
+      addPath(`M ${cx(c)} ${g.sibBarY} L ${cx(c)} ${cardTop(c)}`)
+    );
+  });
+
+  // ── CARDS ──
+  members.forEach(m => {
+    if (hidden.has(m.id)) return;
+    const card = document.createElement('div');
+    card.className = 'card ' + (m.gender || 'other');
+    card.dataset.id = m.id;
+    card.style.left = x[m.id] + 'px';
+    card.style.top  = y[m.id] + 'px';
+
+    const hasVisChildren = childrenOf[m.id].some(c => !hidden.has(c));
+
+    card.innerHTML = `
+      ${hasVisChildren ? `<span class="collapse-btn" data-collapse="${m.id}">${collapsed.has(m.id) ? '+' : '−'}</span>` : ''}
+      <div class="card-name">
+        <span class="card-gender-dot ${m.gender || 'other'}"></span>${m.firstName}
+      </div>
+      <div class="card-surname">${m.lastName}</div>
+      <div class="card-dates">${displayDates(m)}</div>
+    `;
+
+    card.addEventListener('click', e => {
+      if (e.target.classList.contains('collapse-btn')) return;
+      openSideCard(m.id, family, model);
+      document.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+    });
+
+    const colBtn = card.querySelector('.collapse-btn');
+    if (colBtn) {
+      colBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const id = colBtn.dataset.collapse;
+        if (collapsed.has(id)) collapsed.delete(id);
+        else collapsed.add(id);
+        render(family, model, layoutState);
+      });
+    }
+
+    canvas.appendChild(card);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE: interact.js — side card + pan/zoom
+// ═══════════════════════════════════════════════════════
+function openSideCard(id, family, model) {
+  const m = family.byId[id];
+  const { partnerOf, childrenOf } = model;
+
+  document.getElementById('sc-name').textContent    = m.firstName;
+  document.getElementById('sc-surname').textContent = m.lastName;
+
+  // gender badge
+  const genderEl = document.getElementById('sc-gender');
+  const gLabel = { male: 'Male', female: 'Female', other: 'Other' }[m.gender] || m.gender;
+  genderEl.innerHTML = `<span class="sc-gender-badge ${m.gender}">${gLabel}</span>`;
+
+  // born
+  const bornEl = document.getElementById('sc-born');
+  const bd = formatDate(m.birthDate);
+  bornEl.textContent = bd || '—';
+  bornEl.className = 'sc-value' + (bd ? '' : ' muted');
+
+  // died
+  const diedSection = document.getElementById('sc-death-section');
+  const diedEl = document.getElementById('sc-died');
+  if (m.deathDate === null) {
+    diedSection.style.display = 'none';
+  } else {
+    diedSection.style.display = '';
+    const dd = formatDate(m.deathDate);
+    diedEl.textContent = dd || '—';
+    diedEl.className = 'sc-value' + (dd ? '' : ' muted');
+  }
+
+  function makeRelBtn(pid) {
+    const p = family.byId[pid];
+    if (!p) return null;
+    const btn = document.createElement('button');
+    btn.className = `sc-rel-btn ${p.gender}`;
+    btn.textContent = `${p.firstName} ${p.lastName}`;
+    btn.onclick = () => {
+      document.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
+      const card = document.querySelector(`.card[data-id="${pid}"]`);
+      if (card) {
+        card.classList.add('selected');
+        scrollToCard(pid);
+      }
+      openSideCard(pid, family, model);
+    };
+    return btn;
+  }
+
+  // parents
+  const parentsEl  = document.getElementById('sc-parents');
+  const parentsSection = document.getElementById('sc-parents-section');
+  parentsEl.innerHTML = '';
+  m.parents.forEach(pid => {
+    const btn = makeRelBtn(pid);
+    if (btn) parentsEl.appendChild(btn);
+  });
+  parentsSection.style.display = m.parents.length ? '' : 'none';
+
+  // partners
+  const partnersEl = document.getElementById('sc-partners');
+  const partnerSection = document.getElementById('sc-partner-section');
+  partnersEl.innerHTML = '';
+  const partner = partnerOf[id];
+  if (partner) {
+    const btn = makeRelBtn(partner);
+    if (btn) partnersEl.appendChild(btn);
+  }
+  partnerSection.style.display = partner ? '' : 'none';
+
+  // children
+  const childrenEl = document.getElementById('sc-children');
+  const childSection = document.getElementById('sc-children-section');
+  childrenEl.innerHTML = '';
+  const kids = childrenOf[id] || [];
+  kids.forEach(cid => {
+    const btn = makeRelBtn(cid);
+    if (btn) childrenEl.appendChild(btn);
+  });
+  childSection.style.display = kids.length ? '' : 'none';
+
+  // notes
+  const notesEl = document.getElementById('sc-notes');
+  const notesSection = document.getElementById('sc-notes-section');
+  if (m.notes) {
+    notesEl.textContent = m.notes;
+    notesEl.className = 'sc-value';
+    notesSection.style.display = '';
+  } else {
+    notesSection.style.display = 'none';
+  }
+
+  document.getElementById('side-card').classList.add('open');
+}
+
+function scrollToCard(id) {
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (!card) return;
+  const vp = document.getElementById('viewport');
+  const vpW = vp.clientWidth, vpH = vp.clientHeight;
+  const cardX = parseFloat(card.style.left);
+  const cardY = parseFloat(card.style.top);
+  // center card in viewport
+  state.panX = vpW / 2 - (cardX + CARD_W / 2) * state.scale;
+  state.panY = vpH / 2 - (cardY + CARD_H / 2) * state.scale;
+  applyTransform();
+}
+
+const state = { scale: 1, panX: 0, panY: 0 };
+
+function applyTransform() {
+  document.getElementById('canvas').style.transform =
+    `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+  document.getElementById('zoom-level').textContent = Math.round(state.scale * 100) + '%';
+}
+
+function setScale(s) {
+  state.scale = Math.max(0.15, Math.min(3, s));
+  applyTransform();
+}
+
+function initInteract() {
+  const vp = document.getElementById('viewport');
+  let drag = null;
+
+  vp.addEventListener('mousedown', e => {
+    if (e.target.closest('.card')) return;
+    drag = { sx: e.clientX - state.panX, sy: e.clientY - state.panY };
+    vp.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!drag) return;
+    state.panX = e.clientX - drag.sx;
+    state.panY = e.clientY - drag.sy;
+    applyTransform();
+  });
+  window.addEventListener('mouseup', () => {
+    drag = null;
+    vp.classList.remove('grabbing');
+  });
+
+  vp.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.1 : 0.9;
+    const rect = vp.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    // zoom toward mouse
+    state.panX = mx - (mx - state.panX) * delta;
+    state.panY = my - (my - state.panY) * delta;
+    setScale(state.scale * delta);
+  }, { passive: false });
+
+  document.getElementById('btn-zoom-in').onclick  = () => setScale(state.scale * 1.2);
+  document.getElementById('btn-zoom-out').onclick = () => setScale(state.scale / 1.2);
+  document.getElementById('btn-zoom-reset').onclick = () => {
+    state.scale = 1; state.panX = 0; state.panY = 0; applyTransform();
+  };
+  document.getElementById('sc-close').onclick = () =>
+    document.getElementById('side-card').classList.remove('open');
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.getElementById('side-card').classList.remove('open');
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE: app.js — wire everything
+// ═══════════════════════════════════════════════════════
+let currentFamily = null;
+let currentModel  = null;
+let currentLayout = null;
+
+function load(raw) {
+  try {
+    const family = parseFamily(raw);
+    const model  = buildModel(family);
+    const layoutState = buildLayout(family, model);
+    currentFamily = family;
+    currentModel  = model;
+    currentLayout = layoutState;
+
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('family-name-label').textContent = family.name ? `Family: ${family.name}` : '';
+
+    render(family, model, layoutState);
+    centerView();
+  } catch (err) {
+    alert('Error loading file: ' + err.message);
+  }
+}
+
+function centerView() {
+  const vp = document.getElementById('viewport');
+  const canvas = document.getElementById('canvas');
+  const W = parseFloat(canvas.style.width)  || 800;
+  const H = parseFloat(canvas.style.height) || 600;
+  const vpW = vp.clientWidth;
+  const vpH = vp.clientHeight;
+
+  // fit to viewport
+  const scaleX = vpW / (W + 40);
+  const scaleY = vpH / (H + 40);
+  state.scale = Math.min(1, scaleX, scaleY);
+  state.panX = (vpW - W * state.scale) / 2;
+  state.panY = 20;
+  applyTransform();
+}
+
+document.getElementById('btn-expand-all').onclick = () => {
+  if (!currentLayout) return;
+  currentLayout.collapsed.clear();
+  render(currentFamily, currentModel, currentLayout);
+};
+
+document.getElementById('btn-collapse-all').onclick = () => {
+  if (!currentLayout) return;
+  currentFamily.members.forEach(m => {
+    if ((currentModel.childrenOf[m.id] || []).length > 0) currentLayout.collapsed.add(m.id);
+  });
+  render(currentFamily, currentModel, currentLayout);
+};
+
+document.getElementById('file-input').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { load(JSON.parse(e.target.result)); }
+    catch(err) { alert('Invalid JSON: ' + err.message); }
+  };
+  reader.readAsText(file);
+  this.value = ''; // allow re-upload of same file
+});
+
+initInteract();
+</script>
+</body>
+</html>
