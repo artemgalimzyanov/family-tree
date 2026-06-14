@@ -89,11 +89,16 @@ body {
 }
 .connector { fill: none; stroke: #b0bec5; stroke-width: 1.5px; }
 .couple-line { fill: none; stroke: #607d8b; stroke-width: 2px; }
+.couple-dot { fill: #607d8b; }
 
 /* ── MEMBER CARD ── */
 .card {
   position: absolute;
   width: 140px;
+  min-height: 68px;            /* == CARD_H: uniform size even when dates are missing */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   background: #fff;
   border-radius: 8px;
   border: 2px solid #dde1e7;
@@ -452,16 +457,61 @@ function buildModel(family) {
     });
   }
 
-  return { childrenOf, couples, coupleMap, partnerOf, level };
+  // ── hard-coded orientation: ANCHOR central, paternal line left, maternal right ──
+  // side[id] = -1 (father's relatives) | 0 (anchor, siblings, partners, descendants)
+  // | +1 (mother's relatives). Used purely to order each generation left→right.
+  const ANCHOR = 'artem';
+  const side = {};
+  (function assignSides() {
+    const anchor = byId[ANCHOR];
+    if (!anchor) return;                       // anchor absent → leave all undefined
+    const father = anchor.parents.find(p => byId[p] && byId[p].gender === 'male');
+    const mother = anchor.parents.find(p => byId[p] && byId[p].gender === 'female');
+    if (!father || !mother) return;
+
+    // CENTER column: the anchor's full sibling set (children shared by father & mother),
+    // plus their partners and all their descendants.
+    const center = new Set();
+    const seed = childrenOf[father].filter(c => byId[c].parents.includes(mother));
+    const stack = [...seed];
+    while (stack.length) {
+      const id = stack.pop();
+      if (center.has(id)) continue;
+      center.add(id);
+      childrenOf[id].forEach(c => stack.push(c));
+      const pr = partnerOf[id]; if (pr) stack.push(pr);
+    }
+    center.forEach(id => { side[id] = 0; });
+
+    // Flood each parental line over relative edges (parents, children, partner),
+    // blocked by the opposite anchor + the center set. The two lines don't intermarry.
+    const flood = (startId, val, blocked) => {
+      const q = [startId];
+      while (q.length) {
+        const id = q.shift();
+        if (side[id] !== undefined || blocked.has(id)) continue;
+        side[id] = val;
+        const nbrs = [...byId[id].parents, ...childrenOf[id]];
+        const pr = partnerOf[id]; if (pr) nbrs.push(pr);
+        nbrs.forEach(n => { if (byId[n] && side[n] === undefined && !blocked.has(n)) q.push(n); });
+      }
+    };
+    flood(father, -1, new Set([mother, ...center]));
+    flood(mother, +1, new Set([father, ...center]));
+    members.forEach(m => { if (side[m.id] === undefined) side[m.id] = 0; });
+  })();
+
+  return { childrenOf, couples, coupleMap, partnerOf, level, side };
 }
 
 // ═══════════════════════════════════════════════════════
 // MODULE: layout.js — compute x/y
 // ═══════════════════════════════════════════════════════
-const CARD_W = 140, CARD_H = 68, V_GAP = 70, ROW_H = CARD_H + V_GAP;
+const CARD_W = 140, CARD_H = 68, V_GAP = 120, ROW_H = CARD_H + V_GAP;
 const COUPLE_DX = CARD_W + 50;                 // left→right offset between partners (card + gap)
-const SIB_GAP   = 24;                          // gap between siblings of the same parents
-const UNIT_GAP  = Math.round(CARD_W * 0.5);    // gap between different families ≈ 70px
+const SIB_GAP    = 24;                         // gap between siblings of the same parents
+const UNIT_GAP   = Math.round(CARD_W * 0.5);   // unrelated but same surname branch ≈ 70px
+const BRANCH_GAP = Math.round(CARD_W * 1.4);   // different family-name branches ≈ 196px
 
 // shared birth-year rank helper used for sibling sorting in both buildModel and computeLayout
 const birthRank = (byId, id) => { const yr = yearOf(byId[id].birthDate); return yr == null ? Infinity : yr; };
@@ -485,7 +535,7 @@ function pava(a) {
 
 function buildLayout(family, model) {
   const { members, byId } = family;
-  const { childrenOf, couples, coupleMap, partnerOf, level } = model;
+  const { childrenOf, couples, coupleMap, partnerOf, level, side } = model;
   const collapsed = new Set(); // ids whose subtree is hidden
 
   function computeLayout(collapsedSet) {
@@ -579,12 +629,21 @@ function buildLayout(family, model) {
       return out;
     };
 
-    // Dual gap: siblings of the same parents pack tight; unrelated units get a wider channel
+    // Three gap tiers: siblings pack tight; unrelated units sharing a surname get a wider
+    // channel; different family-name branches get the widest. Surnames are gender-normalized
+    // (Денисов/Денисова) and compared per UNIT, so a mixed-surname couple [Denisov · Kusakina]
+    // still counts as the Denisov branch and a married-in spouse never forces a wide gap.
     const parentKey = id => byId[id].parents.slice().sort().join('|');
     const areSiblings = (a, b) => { const p = parentKey(a); return p.length > 0 && p === parentKey(b); };
+    const surnameRoot = id => byId[id].lastName.toLowerCase().replace(/[ая]$/, '');
+    const shareSurname = (ua, ub) => {
+      const roots = new Set(unitMembers[ua].map(surnameRoot).filter(Boolean));
+      return unitMembers[ub].some(id => roots.has(surnameRoot(id)));
+    };
     const gapBetween = (leftU, rightU) => {
       const lm = unitMembers[leftU], rm = unitMembers[rightU];
-      return areSiblings(lm[lm.length - 1], rm[0]) ? SIB_GAP : UNIT_GAP;
+      if (areSiblings(lm[lm.length - 1], rm[0])) return SIB_GAP;
+      return shareSurname(leftU, rightU) ? UNIT_GAP : BRANCH_GAP;
     };
     const familyKeyOf = u => parentKey(unitMembers[u][0]) || ('Z:' + u);
     const unitBirthOf = u => birthRank(byId, unitMembers[u][0]);
@@ -673,6 +732,21 @@ function buildLayout(family, model) {
         if (fka !== fkb) return fka < fkb ? -1 : 1;
         return unitBirthOf(a) - unitBirthOf(b) || (a < b ? -1 : 1);
       });
+    });
+
+    // ── hard-coded orientation: paternal line left, anchor centre, maternal right ──
+    // A stable final sort by unit "side" (mean of its members' side). The anchor's
+    // parents form a bridging couple whose mean is 0, so it lands in the centre band;
+    // the crossing-reduced order is preserved within each band.
+    const unitSide = u => {
+      const ss = unitMembers[u].map(id => (side && side[id] !== undefined ? side[id] : 0));
+      return ss.reduce((a, b) => a + b, 0) / ss.length;
+    };
+    sortedLv.forEach(lv => {
+      order[lv] = order[lv]
+        .map((u, i) => [unitSide(u), i, u])
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+        .map(t => t[2]);
     });
 
     // seed x left→right in the chosen order
@@ -806,6 +880,14 @@ function render(family, model, layoutState) {
     line.setAttribute('x2', bx); line.setAttribute('y2', midY);
     line.setAttribute('class', 'couple-line');
     svg.appendChild(line);
+
+    // dot at the couple midpoint (== child-trunk junction)
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', (ax + bx) / 2);
+    dot.setAttribute('cy', midY);
+    dot.setAttribute('r', 3);
+    dot.setAttribute('class', 'couple-dot');
+    svg.appendChild(dot);
   });
 
   // parent→child connectors ── three-pass approach:
