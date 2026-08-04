@@ -5,1245 +5,1391 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Family Tree</title>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f4f6f9;
+    --card-bg: #ffffff;
+    --ink: #1f2733;
+    --ink-soft: #6b7684;
+    --line: #aeb8c4;
+    --male: #4a90d9;
+    --female: #e0679b;
+    --other: #8e7cc3;
+    --accent: #2f6fed;
+    --panel-w: 320px;
+    --shadow: 0 1px 3px rgba(20, 30, 50, .10), 0 4px 14px rgba(20, 30, 50, .06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg); color: var(--ink);
+    display: flex; flex-direction: column;
+  }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #f0f2f5;
-  color: #222;
-  height: 100vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+  /* ---------- Toolbar ---------- */
+  #toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: #fff; border-bottom: 1px solid #e3e8ee;
+    flex-wrap: wrap; z-index: 20;
+  }
+  #toolbar .title { font-weight: 650; font-size: 15px; margin-right: 4px; }
+  #toolbar .count { color: var(--ink-soft); font-size: 13px; margin-right: auto; }
+  .btn {
+    border: 1px solid #d4dae2; background: #fff; color: var(--ink);
+    border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+    transition: background .12s; white-space: nowrap; line-height: 1.2;
+  }
+  .btn:hover { background: #f0f3f7; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #275fd1; }
+  .btn.icon { padding: 6px 10px; font-weight: 600; }
+  .btn-group { display: flex; gap: 0; }
+  .btn-group .btn { border-radius: 0; margin-left: -1px; }
+  .btn-group .btn:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+  .btn-group .btn:last-child { border-radius: 0 8px 8px 0; }
+  #dirtyDot { display: none; width: 8px; height: 8px; border-radius: 50%; background: #e8a13c; margin-left: 6px; vertical-align: 1px; }
+  #dirtyDot.on { display: inline-block; }
 
-/* ── TOOLBAR ── */
-#toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: #fff;
-  border-bottom: 1px solid #dde1e7;
-  flex-shrink: 0;
-  z-index: 100;
-  flex-wrap: wrap;
-}
+  /* ---------- Warnings banner ---------- */
+  #warnings {
+    display: none; background: #fff7e0; border-bottom: 1px solid #eadfb4;
+    padding: 8px 14px; font-size: 12.5px; color: #6b5d21; position: relative; z-index: 19;
+  }
+  #warnings.on { display: block; }
+  #warnings ul { margin: 2px 0 0 18px; }
+  #warnings .close { position: absolute; right: 10px; top: 6px; cursor: pointer; border: 0; background: none; font-size: 15px; color: #6b5d21; }
 
-#toolbar h1 {
-  font-size: 16px;
-  font-weight: 700;
-  color: #1a1a2e;
-  margin-right: 8px;
-}
+  /* ---------- Canvas ---------- */
+  #viewport { flex: 1; position: relative; overflow: hidden; cursor: grab; touch-action: none; }
+  #viewport.panning { cursor: grabbing; }
+  #world { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  #edges { position: absolute; top: 0; left: 0; overflow: visible; }
+  #edges path, #edges line { stroke: var(--line); stroke-width: 1.6; fill: none; }
+  #edges circle.dot { fill: var(--line); stroke: none; }
 
-.tb-sep { width: 1px; height: 24px; background: #dde1e7; margin: 0 4px; }
+  .card {
+    position: absolute; width: 168px; height: 64px;
+    background: var(--card-bg); border: 1px solid #dfe4ea; border-left-width: 4px;
+    border-radius: 10px; box-shadow: var(--shadow);
+    padding: 9px 10px 8px 12px; cursor: pointer; user-select: none;
+    transition: box-shadow .12s, border-color .12s;
+  }
+  .card:hover { box-shadow: 0 2px 6px rgba(20,30,50,.16), 0 6px 18px rgba(20,30,50,.10); }
+  .card.male   { border-left-color: var(--male); }
+  .card.female { border-left-color: var(--female); }
+  .card.other  { border-left-color: var(--other); }
+  .card.selected { border-color: var(--accent); border-left-width: 4px; box-shadow: 0 0 0 2px rgba(47,111,237,.30), var(--shadow); }
+  .card.flash { animation: flash 1.2s ease-out; }
+  @keyframes flash { 0%,60% { box-shadow: 0 0 0 4px rgba(47,111,237,.45); } 100% { box-shadow: var(--shadow); } }
+  .card .nm { font-size: 13px; font-weight: 640; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; }
+  .card .ln { font-size: 12px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .dt { font-size: 11px; color: var(--ink-soft); margin-top: 2px; min-height: 13px; }
+  .chip {
+    position: absolute; top: 5px; right: 5px; width: 17px; height: 17px;
+    border: 1px solid #cfd6de; border-radius: 5px; background: #f4f6f9;
+    font-size: 12px; line-height: 14px; text-align: center; color: var(--ink-soft);
+    cursor: pointer; z-index: 2;
+  }
+  .chip:hover { background: #e6ebf1; color: var(--ink); }
 
-.tb-btn {
-  background: #f0f2f5;
-  border: 1px solid #dde1e7;
-  border-radius: 6px;
-  padding: 5px 12px;
-  font-size: 13px;
-  cursor: pointer;
-  color: #333;
-  transition: background 0.15s;
-  white-space: nowrap;
-}
-.tb-btn:hover { background: #e2e6ea; }
-.tb-btn.primary {
-  background: #4361ee;
-  color: #fff;
-  border-color: #4361ee;
-}
-.tb-btn.primary:hover { background: #3451d1; }
+  /* ---------- Empty state ---------- */
+  #empty {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  #empty.off { display: none; }
+  #dropzone {
+    width: min(460px, 84vw); padding: 48px 36px; text-align: center;
+    border: 2px dashed #c3ccd7; border-radius: 16px; background: #fff; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #dropzone.drag { border-color: var(--accent); background: #f2f6ff; }
+  #dropzone .big { font-size: 34px; margin-bottom: 10px; }
+  #dropzone h2 { font-size: 17px; font-weight: 650; margin-bottom: 6px; }
+  #dropzone p { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+  #dropzone code { background: #f0f3f7; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
-#zoom-level {
-  font-size: 12px;
-  color: #666;
-  min-width: 40px;
-  text-align: center;
-}
+  /* ---------- Detail panel ---------- */
+  #panel {
+    position: absolute; top: 0; right: 0; bottom: 0; width: var(--panel-w);
+    background: #fff; border-left: 1px solid #e3e8ee; box-shadow: -6px 0 18px rgba(20,30,50,.06);
+    transform: translateX(105%); transition: transform .18s ease; z-index: 15;
+    display: flex; flex-direction: column;
+  }
+  #panel.open { transform: translateX(0); }
+  #panel header { display: flex; align-items: flex-start; gap: 8px; padding: 16px 16px 10px; }
+  #panel header h2 { font-size: 17px; font-weight: 680; flex: 1; line-height: 1.3; }
+  #panel .close { border: 0; background: none; font-size: 20px; color: var(--ink-soft); cursor: pointer; padding: 0 2px; }
+  #panel .body { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: #fff; }
+  .badge.male { background: var(--male); } .badge.female { background: var(--female); } .badge.other { background: var(--other); }
+  .frow { margin-top: 14px; }
+  .frow .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); margin-bottom: 4px; }
+  .frow .val { font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; }
+  .rels { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rel {
+    border: 1px solid #d4dae2; background: #f7f9fb; border-radius: 999px;
+    padding: 4px 11px; font-size: 12.5px; cursor: pointer;
+  }
+  .rel:hover { background: #eef2f7; border-color: var(--accent); color: var(--accent); }
+  #panel footer { padding: 12px 16px; border-top: 1px solid #eef1f5; display: flex; gap: 8px; }
+  .btn.danger { color: #c23a3a; border-color: #e4c7c7; }
+  .btn.danger:hover { background: #fbf1f1; }
 
-/* ── VIEWPORT ── */
-#viewport {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-  cursor: grab;
-}
-#viewport.grabbing { cursor: grabbing; }
+  /* ---------- Editor dialog ---------- */
+  dialog {
+    border: 0; border-radius: 14px; box-shadow: 0 10px 40px rgba(20,30,50,.25);
+    padding: 0; width: min(440px, 92vw);
+  }
+  dialog::backdrop { background: rgba(25, 32, 44, .38); }
+  #editor form { padding: 20px 22px; }
+  #editor h2 { font-size: 16px; font-weight: 680; margin-bottom: 4px; }
+  #editor .idprev { font-size: 12px; color: var(--ink-soft); margin-bottom: 14px; }
+  #editor .idprev code { background: #f0f3f7; padding: 1px 6px; border-radius: 4px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fld { margin-bottom: 11px; }
+  .fld label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+  .fld input, .fld select, .fld textarea {
+    width: 100%; border: 1px solid #d4dae2; border-radius: 8px; padding: 7px 9px;
+    font-size: 13.5px; font-family: inherit; background: #fff; color: var(--ink);
+  }
+  .fld input:focus, .fld select:focus, .fld textarea:focus { outline: 2px solid rgba(47,111,237,.35); border-color: var(--accent); }
+  .fld textarea { resize: vertical; min-height: 58px; }
+  .fld .hint { font-size: 11px; color: var(--ink-soft); margin-top: 3px; }
+  #editor .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
-#canvas {
-  position: absolute;
-  top: 0; left: 0;
-  transform-origin: 0 0;
-}
-
-/* ── SVG CONNECTOR LAYER ── */
-#connectors {
-  position: absolute;
-  top: 0; left: 0;
-  pointer-events: none;
-  overflow: visible;
-}
-.connector { fill: none; stroke: #b0bec5; stroke-width: 1.5px; }
-.couple-line { fill: none; stroke: #607d8b; stroke-width: 2px; }
-.couple-dot { fill: #607d8b; }
-
-/* ── MEMBER CARD ── */
-.card {
-  position: absolute;
-  width: 140px;
-  min-height: 68px;            /* == CARD_H: uniform size even when dates are missing */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  background: #fff;
-  border-radius: 8px;
-  border: 2px solid #dde1e7;
-  padding: 8px 10px;
-  cursor: pointer;
-  transition: box-shadow 0.15s, transform 0.1s;
-  user-select: none;
-}
-.card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); transform: translateY(-1px); }
-.card.male    { border-color: #90caf9; }
-.card.female  { border-color: #f48fb1; }
-.card.selected { box-shadow: 0 0 0 3px #4361ee; }
-
-.card-name {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
-  margin-bottom: 2px;
-}
-.card-surname {
-  font-size: 11px;
-  color: #666;
-  margin-bottom: 4px;
-}
-.card-dates {
-  font-size: 10px;
-  color: #888;
-}
-.card-gender-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-.card-gender-dot.male   { background: #42a5f5; }
-.card-gender-dot.female { background: #ec407a; }
-.card-gender-dot.other  { background: #ab47bc; }
-
-.collapse-btn {
-  position: absolute;
-  right: 4px; top: 4px;
-  width: 16px; height: 16px;
-  background: #e8eaf6;
-  border: 1px solid #c5cae9;
-  border-radius: 3px;
-  font-size: 10px;
-  line-height: 16px;
-  text-align: center;
-  cursor: pointer;
-  color: #3949ab;
-  z-index: 1;
-}
-.collapse-btn:hover { background: #c5cae9; }
-
-/* ── EMPTY STATE ── */
-#empty-state {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  color: #888;
-  pointer-events: none;
-}
-#empty-state h2 { font-size: 22px; font-weight: 600; color: #555; }
-#empty-state p  { font-size: 14px; max-width: 320px; text-align: center; line-height: 1.5; }
-#empty-icon { font-size: 56px; }
-
-/* ── SIDE CARD ── */
-#side-card {
-  position: fixed;
-  top: 0; right: -380px;
-  width: 360px;
-  height: 100vh;
-  background: #fff;
-  box-shadow: -4px 0 20px rgba(0,0,0,0.12);
-  z-index: 200;
-  transition: right 0.25s ease;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-#side-card.open { right: 0; }
-
-#side-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 20px 20px 12px;
-  border-bottom: 1px solid #eee;
-  flex-shrink: 0;
-}
-#sc-name { font-size: 18px; font-weight: 700; line-height: 1.3; }
-#sc-surname { font-size: 14px; color: #666; margin-top: 2px; }
-#sc-close {
-  background: none; border: none; font-size: 20px; cursor: pointer;
-  color: #999; padding: 0 4px; line-height: 1; flex-shrink: 0;
-}
-#sc-close:hover { color: #333; }
-
-#side-card-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-}
-
-.sc-section { margin-bottom: 16px; }
-.sc-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #aaa;
-  margin-bottom: 4px;
-}
-.sc-value { font-size: 14px; color: #333; line-height: 1.4; }
-.sc-value.muted { color: #999; font-style: italic; }
-
-.sc-relatives { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.sc-rel-btn {
-  background: #f0f2f5;
-  border: 1px solid #dde1e7;
-  border-radius: 20px;
-  padding: 3px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  color: #333;
-  transition: background 0.1s;
-}
-.sc-rel-btn:hover { background: #e2e6ea; }
-.sc-rel-btn.male   { border-color: #90caf9; }
-.sc-rel-btn.female { border-color: #f48fb1; }
-
-.sc-gender-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-.sc-gender-badge.male   { background: #e3f2fd; color: #1565c0; }
-.sc-gender-badge.female { background: #fce4ec; color: #c62828; }
-.sc-gender-badge.other  { background: #f3e5f5; color: #6a1b9a; }
-
+  input[type="file"] { display: none; }
 </style>
 </head>
 <body>
 
-<!-- TOOLBAR -->
 <div id="toolbar">
-  <h1>🌳 Family Tree</h1>
-  <div class="tb-sep"></div>
-  <label class="tb-btn primary" style="cursor:pointer">
-    Upload JSON
-    <input type="file" id="file-input" accept=".json" style="display:none">
-  </label>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" id="btn-zoom-in">+ Zoom In</button>
-  <span id="zoom-level">100%</span>
-  <button class="tb-btn" id="btn-zoom-out">− Zoom Out</button>
-  <button class="tb-btn" id="btn-zoom-reset">Reset View</button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" id="btn-expand-all">Expand All</button>
-  <button class="tb-btn" id="btn-collapse-all">Collapse All</button>
-  <div class="tb-sep"></div>
-  <span id="family-name-label" style="font-size:13px;color:#888;"></span>
+  <span class="title" id="familyTitle">Family Tree</span>
+  <span class="count" id="memberCount"></span>
+  <button class="btn" id="btnUpload">Upload JSON</button>
+  <button class="btn" id="btnAdd" disabled>＋ Add member</button>
+  <button class="btn" id="btnDownload" disabled>Download JSON<span id="dirtyDot"></span></button>
+  <span style="flex-basis:0"></span>
+  <button class="btn" id="btnExpandAll" disabled>Expand all</button>
+  <button class="btn" id="btnCollapseAll" disabled>Collapse all</button>
+  <div class="btn-group">
+    <button class="btn icon" id="btnZoomOut" disabled>−</button>
+    <button class="btn icon" id="btnZoomIn" disabled>＋</button>
+    <button class="btn" id="btnFit" disabled>Fit</button>
+    <button class="btn" id="btnCenter" disabled>Center</button>
+  </div>
 </div>
 
-<!-- VIEWPORT -->
+<div id="warnings">
+  <button class="close" title="Dismiss">✕</button>
+  <strong>Data notes:</strong>
+  <ul id="warningsList"></ul>
+</div>
+
 <div id="viewport">
-  <div id="canvas">
-    <svg id="connectors" width="1" height="1"></svg>
+  <div id="world">
+    <svg id="edges"></svg>
+    <div id="cards"></div>
   </div>
-  <div id="empty-state">
-    <div id="empty-icon">🌳</div>
-    <h2>No family tree loaded</h2>
-    <p>Click <strong>Upload JSON</strong> to load a family data file.</p>
+
+  <div id="empty">
+    <div id="dropzone">
+      <div class="big">🌳</div>
+      <h2>Load your family tree</h2>
+      <p>Drop a JSON file here, or click to choose one.<br>
+         Format: <code>{ "family": { "name", "anchor", "members": [&hellip;] } }</code></p>
+    </div>
   </div>
+
+  <aside id="panel">
+    <header>
+      <h2 id="pName"></h2>
+      <button class="close" id="pClose" title="Close">✕</button>
+    </header>
+    <div class="body" id="pBody"></div>
+    <footer>
+      <button class="btn" id="pEdit">Edit</button>
+      <button class="btn danger" id="pDelete">Delete</button>
+    </footer>
+  </aside>
 </div>
 
-<!-- SIDE CARD -->
-<div id="side-card">
-  <div id="side-card-header">
-    <div>
-      <div id="sc-name">—</div>
-      <div id="sc-surname"></div>
+<dialog id="editor">
+  <form method="dialog" id="editorForm">
+    <h2 id="edTitle">Add member</h2>
+    <div class="idprev">ID: <code id="edId">—</code></div>
+    <div class="grid2">
+      <div class="fld"><label>First name *</label><input id="edFirst" required autocomplete="off"></div>
+      <div class="fld"><label>Last name</label><input id="edLast" autocomplete="off"></div>
     </div>
-    <button id="sc-close">✕</button>
-  </div>
-  <div id="side-card-body">
-    <div class="sc-section">
-      <div class="sc-label">Gender</div>
-      <div id="sc-gender" class="sc-value"></div>
+    <div class="grid2">
+      <div class="fld"><label>Gender</label>
+        <select id="edGender"><option value="male">male</option><option value="female">female</option><option value="other">other</option></select>
+      </div>
+      <div class="fld"><label>Birth date</label><input id="edBirth" placeholder="1984-07-04 / 1984 / 1910?">
+      </div>
     </div>
-    <div class="sc-section">
-      <div class="sc-label">Born</div>
-      <div id="sc-born" class="sc-value"></div>
+    <div class="fld"><label>Death date</label><input id="edDeath" placeholder="empty = living · YYYY-MM-DD / YYYY / ?">
     </div>
-    <div class="sc-section" id="sc-death-section">
-      <div class="sc-label">Died</div>
-      <div id="sc-died" class="sc-value"></div>
+    <div class="grid2">
+      <div class="fld"><label>Parent 1</label><select id="edParent1"></select></div>
+      <div class="fld"><label>Parent 2</label><select id="edParent2"></select></div>
     </div>
-    <div class="sc-section" id="sc-parents-section">
-      <div class="sc-label">Parents</div>
-      <div id="sc-parents" class="sc-relatives"></div>
+    <div class="fld"><label>Partner</label><select id="edPartner"></select>
+      <div class="hint">Couples are also linked automatically when two people share a child.</div>
     </div>
-    <div class="sc-section" id="sc-partner-section">
-      <div class="sc-label">Partner(s)</div>
-      <div id="sc-partners" class="sc-relatives"></div>
+    <div class="fld"><label>Notes</label><textarea id="edNotes"></textarea></div>
+    <div class="actions">
+      <button type="button" class="btn" id="edCancel">Cancel</button>
+      <button type="submit" class="btn primary" id="edSave">Save</button>
     </div>
-    <div class="sc-section" id="sc-children-section">
-      <div class="sc-label">Children</div>
-      <div id="sc-children" class="sc-relatives"></div>
-    </div>
-    <div class="sc-section" id="sc-notes-section">
-      <div class="sc-label">Notes</div>
-      <div id="sc-notes" class="sc-value"></div>
-    </div>
-  </div>
-</div>
+  </form>
+</dialog>
+
+<input type="file" id="fileInput" accept=".json,application/json">
 
 <script>
-// ═══════════════════════════════════════════════════════
-// MODULE: data.js — parse & normalize
-// ═══════════════════════════════════════════════════════
-function parseFamily(raw) {
-  if (!raw || !raw.family || !Array.isArray(raw.family.members)) {
-    throw new Error('Invalid format: expected { family: { members: [...] } }');
-  }
-  const members = raw.family.members;
-  const byId = {};
-  members.forEach(m => { byId[m.id] = m; });
+"use strict";
+/* ============================================================================
+ * CORE-START  — DOM-free data + layout engine (also runnable under Node for
+ * tests). Everything below until CORE-END must not touch `document`/`window`.
+ * Layout spec: ../ideas/rules.md — generation rows, couple dot + single trunk,
+ * symmetric Bézier fan, anchor-centred left/right split, barycentric sweeps,
+ * PAVA collision resolution with 3 gap tiers.
+ * ==========================================================================*/
 
-  // clean each member
-  const clean = members.map(m => ({
-    id: m.id,
-    firstName: (m.firstName || '').trim(),
-    lastName:  (m.lastName  || '').trim(),
-    birthDate: (m.birthDate || '').toString().trim(),
-    deathDate: m.deathDate == null ? null : (m.deathDate || '').toString().trim(),
-    gender: m.gender || 'other',
-    parents: (m.parents || []).filter(p => p && p.trim() && byId[p.trim()]),
-    photo: m.photo || null,
-    notes: (m.notes || '').trim(),
-  }));
+const C = {
+  CARD_W: 168, CARD_H: 64,
+  COUPLE_DX: 28,                 // gap between partner cards inside a unit
+  SIB_GAP: 28,                   // adjacent units sharing the same parents
+  UNIT_GAP: 84,                  // unrelated units sharing a surname root
+  BRANCH_GAP: 200,               // different family-name branches
+  V_GAP: 96,                     // vertical clearance between rows
+  PAD: 80,                       // outer padding of the drawing
+  SWEEPS: 12,                    // barycentric iterations
+};
+C.ROW_H = C.CARD_H + C.V_GAP;
 
-  const cleanById = {};
-  clean.forEach(m => { cleanById[m.id] = m; });
+/* ---------- helpers ---------- */
 
-  return { name: raw.family.name || '', members: clean, byId: cleanById };
+const TRANSLIT = {
+  а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"i",к:"k",
+  л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"ts",
+  ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya",
+};
+function translitSlug(s) {
+  const lat = String(s || "").toLowerCase().split("")
+    .map(ch => TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch).join("");
+  return lat.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-function yearOf(dateStr) {
-  if (!dateStr || dateStr === 'null') return null;
-  const m = dateStr.match(/^(\d{4})/);
-  return m ? parseInt(m[1]) : null;
+function birthYear(m) {
+  const t = String(m.birthDate || "").match(/\d{4}/);
+  return t ? +t[0] : null;
 }
-
-function formatDate(dateStr) {
-  return (!dateStr || dateStr === 'null') ? null : dateStr;
+// surname root with Russian feminine а/я stripped, so Денисов == Денисова
+function surnameRoot(m) {
+  return String(m.lastName || "").toLowerCase().replace(/[ая]$/, "");
 }
-
 function displayDates(m) {
-  const by = yearOf(m.birthDate);
-  const dy = m.deathDate === null ? null : yearOf(m.deathDate);
-  if (!by && dy === null) return '';
-  if (!by) return `?–${dy}`;
-  if (dy === null) return `b. ${by}`;
-  return `${by}–${dy}`;
+  const bd = String(m.birthDate || "");
+  const dd = m.deathDate === null ? null : String(m.deathDate || "");
+  const year = s => { const t = s.match(/^\d{4}/); return t ? t[0] + (s.includes("?") ? "?" : "") : s; };
+  const byr = bd ? year(bd) : "";
+  const dyr = dd ? year(dd) : "";
+  if (dd === null) return byr ? "b. " + byr : "";
+  if (byr && dyr) return byr + "–" + dyr;
+  if (byr) return byr + "–?";
+  if (dyr) return "?–" + dyr;
+  return "";
 }
 
-// ═══════════════════════════════════════════════════════
-// MODULE: model.js — couple inference, levels
-// ═══════════════════════════════════════════════════════
-function buildModel(family) {
-  const { members, byId } = family;
+/* ---------- 1. parse & validate ---------- */
 
-  // children map
-  const childrenOf = {};
-  members.forEach(m => { childrenOf[m.id] = []; });
-  members.forEach(m => {
-    m.parents.forEach(pid => childrenOf[pid].push(m.id));
-  });
-
-  // sort each parent's children by birth year, oldest first (no birthday → last)
-  Object.keys(childrenOf).forEach(pid =>
-    childrenOf[pid].sort((a, b) => birthRank(byId, a) - birthRank(byId, b) || (a < b ? -1 : 1)));
-
-  // couple inference: all unordered pairs that share at least one child
-  const coupleMap = {}; // "a|b" -> { ids:[a,b], children:[] }
-  members.forEach(m => {
-    if (m.parents.length === 2) {
-      const key = [m.parents[0], m.parents[1]].sort().join('|');
-      if (!coupleMap[key]) coupleMap[key] = { ids: [...m.parents].sort(), children: [] };
-      coupleMap[key].children.push(m.id);
-    }
-  });
-  const couples = Object.values(coupleMap);
-
-  // partner lookup: id -> partner id (or null)
-  const partnerOf = {};
-  couples.forEach(c => {
-    partnerOf[c.ids[0]] = c.ids[1];
-    partnerOf[c.ids[1]] = c.ids[0];
-  });
-
-  // level assignment: bidirectional BFS so a generation is a *relative* constraint,
-  // not absolute depth-from-root. Propagate down (child = parent+1), UP (parent = child-1),
-  // and tie co-parents to the same row — all in one pass. This keeps a sparsely-documented
-  // ancestor (e.g. one with no recorded parents) sitting one row above their child instead
-  // of floating at the top when the spouse's branch is documented much deeper.
-  const level = {};
-  members.forEach(start => {
-    if (level[start.id] !== undefined) return;     // already placed by an earlier BFS
-    const queue = [[start.id, 0]];
-    level[start.id] = 0;
-    while (queue.length) {
-      const [cur, lv] = queue.shift();
-      childrenOf[cur].forEach(c => {               // down
-        if (level[c] === undefined) { level[c] = lv + 1; queue.push([c, lv + 1]); }
-      });
-      byId[cur].parents.forEach(p => {             // up
-        if (level[p] === undefined) { level[p] = lv - 1; queue.push([p, lv - 1]); }
-      });
-      const partner = partnerOf[cur];              // spouse → same row
-      if (partner && level[partner] === undefined) { level[partner] = lv; queue.push([partner, lv]); }
-    }
-  });
-
-  // normalize so the top generation is 0
-  const minL = Math.min(...members.map(m => level[m.id]));
-  members.forEach(m => { level[m.id] -= minL; });
-
-  // safety pass: guarantee child strictly below parents and couples share a row.
-  // Seeded by the BFS result (not all-zeros), so well-documented asymmetries no longer
-  // float; this only ever nudges a child down minimally on contradictory data.
-  let changed = true;
-  for (let iter = 0; iter < 60 && changed; iter++) {
-    changed = false;
-    members.forEach(m => {
-      m.parents.forEach(pid => {
-        if (level[m.id] <= level[pid]) {
-          level[m.id] = level[pid] + 1;
-          changed = true;
-        }
-      });
-    });
-    // equalize couples
-    couples.forEach(c => {
-      const mx = Math.max(level[c.ids[0]], level[c.ids[1]]);
-      c.ids.forEach(id => {
-        if (level[id] !== mx) { level[id] = mx; changed = true; }
-      });
+function parseData(raw) {
+  const warnings = [];
+  const fam = raw && raw.family ? raw.family : raw;
+  if (!fam || !Array.isArray(fam.members)) {
+    throw new Error("JSON must contain family.members (an array of people).");
+  }
+  const members = [];
+  const seen = new Set();
+  for (const src of fam.members) {
+    if (!src || typeof src !== "object") continue;
+    let id = String(src.id || "").trim();
+    if (!id) { warnings.push("A member without an id was skipped."); continue; }
+    if (seen.has(id)) { warnings.push(`Duplicate id "${id}" — second entry skipped.`); continue; }
+    seen.add(id);
+    const cleanRefs = (arr, what) => {
+      const out = [];
+      for (const r of (Array.isArray(arr) ? arr : [])) {
+        const v = String(r || "").trim();
+        if (!v) continue;
+        out.push(v);
+      }
+      return out;
+    };
+    members.push({
+      id,
+      firstName: String(src.firstName || "").trim(),
+      lastName: String(src.lastName || "").trim(),
+      gender: ["male", "female", "other"].includes(src.gender) ? src.gender : "other",
+      birthDate: src.birthDate == null ? "" : String(src.birthDate).trim(),
+      deathDate: src.deathDate === null ? null : String(src.deathDate == null ? "" : src.deathDate).trim(),
+      parents: cleanRefs(src.parents),
+      partnersX: cleanRefs(src.partners),   // explicit partners (kept for export)
+      photo: src.photo || null,
+      notes: String(src.notes || ""),
     });
   }
-
-  // ── hard-coded orientation: ANCHOR central, paternal line left, maternal right ──
-  // side[id] = -1 (father's relatives) | 0 (anchor, siblings, partners, descendants)
-  // | +1 (mother's relatives). Used purely to order each generation left→right.
-  const ANCHOR = 'artem';
-  const side = {};
-  (function assignSides() {
-    const anchor = byId[ANCHOR];
-    if (!anchor) return;                       // anchor absent → leave all undefined
-    const father = anchor.parents.find(p => byId[p] && byId[p].gender === 'male');
-    const mother = anchor.parents.find(p => byId[p] && byId[p].gender === 'female');
-    if (!father || !mother) return;
-
-    // CENTER column: the anchor's full sibling set (children shared by father & mother),
-    // plus their partners and all their descendants.
-    const center = new Set();
-    const seed = childrenOf[father].filter(c => byId[c].parents.includes(mother));
-    const stack = [...seed];
-    while (stack.length) {
-      const id = stack.pop();
-      if (center.has(id)) continue;
-      center.add(id);
-      childrenOf[id].forEach(c => stack.push(c));
-      const pr = partnerOf[id]; if (pr) stack.push(pr);
-    }
-    center.forEach(id => { side[id] = 0; });
-
-    // Flood each parental line over relative edges (parents, children, partner),
-    // blocked by the opposite anchor + the center set. The two lines don't intermarry.
-    const flood = (startId, val, blocked) => {
-      const q = [startId];
-      while (q.length) {
-        const id = q.shift();
-        if (side[id] !== undefined || blocked.has(id)) continue;
-        side[id] = val;
-        const nbrs = [...byId[id].parents, ...childrenOf[id]];
-        const pr = partnerOf[id]; if (pr) nbrs.push(pr);
-        nbrs.forEach(n => { if (byId[n] && side[n] === undefined && !blocked.has(n)) q.push(n); });
-      }
-    };
-    flood(father, -1, new Set([mother, ...center]));
-    flood(mother, +1, new Set([father, ...center]));
-    members.forEach(m => { if (side[m.id] === undefined) side[m.id] = 0; });
-  })();
-
-  return { childrenOf, couples, coupleMap, partnerOf, level, side };
+  // second pass: drop unknown refs, cap parents at 2
+  for (const m of members) {
+    const before = m.parents.length;
+    m.parents = m.parents.filter(p => seen.has(p) && p !== m.id);
+    if (m.parents.length < before) warnings.push(`"${m.id}": removed ${before - m.parents.length} empty/unknown parent reference(s).`);
+    if (m.parents.length > 2) { warnings.push(`"${m.id}": has ${m.parents.length} parents — only the first 2 kept.`); m.parents = m.parents.slice(0, 2); }
+    m.partnersX = m.partnersX.filter(p => seen.has(p) && p !== m.id);
+  }
+  let anchor = fam.anchor && seen.has(fam.anchor) ? fam.anchor : (seen.has("artem") ? "artem" : null);
+  return { name: String(fam.name || "").trim(), anchor, members, warnings };
 }
 
-// ═══════════════════════════════════════════════════════
-// MODULE: layout.js — compute x/y
-// ═══════════════════════════════════════════════════════
-const CARD_W = 140, CARD_H = 68, V_GAP = 120, ROW_H = CARD_H + V_GAP;
-const COUPLE_DX = CARD_W + 50;                 // left→right offset between partners (card + gap)
-const SIB_GAP    = 24;                         // gap between siblings of the same parents
-const UNIT_GAP   = Math.round(CARD_W * 0.5);   // unrelated but same surname branch ≈ 70px
-const BRANCH_GAP = Math.round(CARD_W * 1.4);   // different family-name branches ≈ 196px
+/* ---------- 2. model: indexes, couples, generations, sides ---------- */
 
-// shared birth-year rank helper used for sibling sorting in both buildModel and computeLayout
-const birthRank = (byId, id) => { const yr = yearOf(byId[id].birthDate); return yr == null ? Infinity : yr; };
+function buildModel(parsed) {
+  const byId = new Map(parsed.members.map(m => [m.id, m]));
+  const order = parsed.members.map(m => m.id);
+  const childrenOf = new Map(order.map(id => [id, []]));
+  for (const m of parsed.members)
+    for (const p of m.parents) childrenOf.get(p).push(m.id);
 
-// PAVA isotonic regression: nondecreasing fit closest to a[] (L2-optimal)
-function pava(a) {
-  const blocks = [];
-  a.forEach(val => {
-    let b = { v: val, w: 1, n: 1 };
-    while (blocks.length && blocks[blocks.length - 1].v >= b.v) {
-      const p = blocks.pop();
-      const w = p.w + b.w;
-      b = { v: (p.v * p.w + b.v * b.w) / w, w, n: p.n + b.n };
+  // couples: inferred from shared children ∪ explicit partners
+  const partnersOf = new Map(order.map(id => [id, new Set()]));
+  const link = (a, b) => { partnersOf.get(a).add(b); partnersOf.get(b).add(a); };
+  for (const m of parsed.members)
+    if (m.parents.length === 2) link(m.parents[0], m.parents[1]);
+  for (const m of parsed.members)
+    for (const p of m.partnersX) link(m.id, p);
+
+  const model = { ...parsed, byId, order, childrenOf, partnersOf };
+  // effective anchor: the declared one, else the member with the deepest
+  // ancestry (layout-only — never written back on export)
+  model.anchorEff = model.anchor;
+  if (!model.anchorEff && order.length) {
+    let best = null, bestN = -1;
+    for (const id of order) {
+      let n = 0;
+      const seen = new Set([id]), q = [id];
+      while (q.length) {
+        const c = q.shift();
+        for (const p of byId.get(c).parents)
+          if (!seen.has(p)) { seen.add(p); n++; q.push(p); }
+      }
+      if (n > bestN) { bestN = n; best = id; }
     }
-    blocks.push(b);
-  });
-  const out = [];
-  blocks.forEach(b => { for (let i = 0; i < b.n; i++) out.push(b.v); });
+    model.anchorEff = best;
+  }
+  model.levels = assignLevels(model);
+  model.sides = computeSides(model);
+  model.spine = computeSpine(model);
+  return model;
+}
+
+// Bidirectional BFS seed + raise-only normalization: partners share a row,
+// every child ends strictly below both parents.
+function assignLevels(model) {
+  const { byId, order, childrenOf, partnersOf } = model;
+  const level = new Map();
+  for (const seed of order) {
+    if (level.has(seed)) continue;
+    level.set(seed, 0);
+    const q = [seed];
+    while (q.length) {
+      const cur = q.shift(), lv = level.get(cur), m = byId.get(cur);
+      const visit = (n, l) => { if (byId.has(n) && !level.has(n)) { level.set(n, l); q.push(n); } };
+      for (const p of m.parents) visit(p, lv - 1);
+      for (const c of childrenOf.get(cur)) visit(c, lv + 1);
+      for (const p of partnersOf.get(cur)) visit(p, lv);
+    }
+  }
+  let changed = true, guard = 0;
+  while (changed && guard++ < 300) {
+    changed = false;
+    for (const id of order) {
+      for (const p of partnersOf.get(id)) {
+        const a = level.get(id), b = level.get(p);
+        if (a < b) { level.set(id, b); changed = true; }
+        else if (b < a) { level.set(p, a); changed = true; }
+      }
+      const m = byId.get(id);
+      let pmax = -Infinity;
+      for (const p of m.parents) pmax = Math.max(pmax, level.get(p));
+      if (pmax > -Infinity && level.get(id) <= pmax) { level.set(id, pmax + 1); changed = true; }
+    }
+  }
+  const min = Math.min(...level.values());
+  for (const [k, v] of level) level.set(k, v - min);
+  return level;
+}
+
+// −1 = father's side (left), +1 = mother's side (right), 0 = centre.
+function computeSides(model) {
+  const side = new Map();
+  const { byId, childrenOf, partnersOf, anchorEff } = model;
+  const a = anchorEff && byId.get(anchorEff);
+  if (!a) return side;
+  const parents = a.parents.map(id => byId.get(id)).filter(Boolean);
+  const father = parents.find(p => p.gender === "male") || parents[0];
+  const mother = parents.find(p => p !== father);
+  if (!father || !mother) return side;
+
+  // centre: anchor + siblings (children of both parents) + partners + descendants
+  const centre = new Set();
+  const floodDown = (id) => {
+    if (centre.has(id)) return;
+    centre.add(id);
+    for (const p of partnersOf.get(id)) if (p !== father.id && p !== mother.id) centre.add(p);
+    for (const c of childrenOf.get(id)) floodDown(c);
+    for (const p of partnersOf.get(id)) if (centre.has(p)) for (const c of childrenOf.get(p)) floodDown(c);
+  };
+  for (const c of childrenOf.get(father.id))
+    if (byId.get(c).parents.includes(mother.id)) floodDown(c);
+  for (const id of centre) side.set(id, 0);
+
+  side.set(father.id, -1);
+  side.set(mother.id, 1);
+  const flood = (start, s, blocked) => {
+    const q = [start];
+    while (q.length) {
+      const cur = q.shift(), m = byId.get(cur);
+      const nbs = [...m.parents, ...childrenOf.get(cur), ...partnersOf.get(cur)];
+      for (const n of nbs) {
+        if (!byId.has(n) || side.has(n) || blocked.has(n)) continue;
+        side.set(n, s); q.push(n);
+      }
+    }
+  };
+  flood(father.id, -1, new Set([mother.id, ...centre]));
+  flood(mother.id, 1, new Set([father.id, ...centre]));
+  return side;
+}
+
+// anchor + its ancestor closure — kept visible through any collapse
+function computeSpine(model) {
+  const spine = new Set();
+  if (!model.anchorEff || !model.byId.has(model.anchorEff)) return spine;
+  const q = [model.anchorEff];
+  while (q.length) {
+    const id = q.shift();
+    if (spine.has(id)) continue;
+    spine.add(id);
+    for (const p of model.byId.get(id).parents) q.push(p);
+  }
+  return spine;
+}
+
+/* ---------- 3. visibility (collapse) ---------- */
+
+// collapsed: Set of member ids whose descendants are hidden.
+function computeHidden(model, collapsed) {
+  const hidden = new Set();
+  const { byId, childrenOf, partnersOf, spine } = model;
+  const hideDown = (id) => {
+    if (hidden.has(id)) return;
+    if (!spine.has(id)) {
+      hidden.add(id);
+      // married-in partners (no parents of their own) sink with the branch
+      for (const p of partnersOf.get(id))
+        if (!spine.has(p) && byId.get(p).parents.length === 0) hidden.add(p);
+    }
+    for (const c of childrenOf.get(id)) hideDown(c);
+  };
+  for (const id of collapsed) {
+    if (!byId.has(id)) continue;
+    for (const c of childrenOf.get(id)) hideDown(c);
+  }
+  return hidden;
+}
+
+/* ---------- 4. layout units ---------- */
+
+function buildUnits(model, hidden) {
+  const { byId, order, partnersOf, levels, sides } = model;
+  const visible = order.filter(id => !hidden.has(id));
+  const uf = new Map(visible.map(id => [id, id]));
+  const find = (x) => { while (uf.get(x) !== x) { uf.set(x, uf.get(uf.get(x))); x = uf.get(x); } return x; };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) uf.set(ra, rb); };
+  for (const id of visible)
+    for (const p of partnersOf.get(id))
+      if (!hidden.has(p) && levels.get(p) === levels.get(id)) union(id, p);
+
+  const groups = new Map();
+  for (const id of visible) {
+    const r = find(id);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(id);
+  }
+
+  const units = [];
+  for (const g of groups.values()) {
+    const membersOrdered = orderWithinUnit(g, model, hidden);
+    const side = g.reduce((s, id) => s + (sides.get(id) || 0), 0) / g.length;
+    const u = {
+      members: membersOrdered,
+      level: levels.get(g[0]),
+      side,
+      w: membersOrdered.length * C.CARD_W + (membersOrdered.length - 1) * C.COUPLE_DX,
+      x: 0, t: 0,
+      birth: Math.min(...g.map(id => birthYear(byId.get(id)) ?? 9999)),
+      minIdx: Math.min(...g.map(id => order.indexOf(id))),
+    };
+    units.push(u);
+  }
+  return units;
+}
+
+// male left for couples; for chains (>2) walk the partner path
+function orderWithinUnit(ids, model, hidden) {
+  const { byId, partnersOf } = model;
+  if (ids.length === 1) return ids.slice();
+  if (ids.length === 2) {
+    const [a, b] = ids;
+    const ga = byId.get(a).gender, gb = byId.get(b).gender;
+    if (ga === "male" && gb !== "male") return [a, b];
+    if (gb === "male" && ga !== "male") return [b, a];
+    return [a, b].sort();
+  }
+  // chain: find an endpoint of the partner path and walk it
+  const inSet = new Set(ids);
+  const deg = id => [...partnersOf.get(id)].filter(p => inSet.has(p) && !hidden.has(p)).length;
+  let start = ids.find(id => deg(id) === 1) || ids.slice().sort()[0];
+  const out = [], used = new Set();
+  let cur = start;
+  while (cur && !used.has(cur)) {
+    out.push(cur); used.add(cur);
+    cur = [...partnersOf.get(cur)].find(p => inSet.has(p) && !used.has(p));
+  }
+  for (const id of ids) if (!used.has(id)) out.push(id);   // safety net
   return out;
 }
 
-function buildLayout(family, model) {
-  const { members, byId } = family;
-  const { childrenOf, couples, coupleMap, partnerOf, level, side } = model;
-  const collapsed = new Set(); // ids whose subtree is hidden
+/* ---------- 5. layout: sweeps + PAVA ---------- */
 
-  function computeLayout(collapsedSet) {
-    // group members by level
-    const levels = {};
-    let maxLevel = 0;
-    members.forEach(m => {
-      const l = level[m.id];
-      if (!levels[l]) levels[l] = [];
-      levels[l].push(m.id);
-      if (l > maxLevel) maxLevel = l;
-    });
+// gap tiers between adjacent units in a row
+function gapBetween(a, b, model) {
+  const { byId } = model;
+  const pkey = id => byId.get(id).parents.slice().sort().join("+");
+  for (const x of a.members) for (const y of b.members) {
+    const px = pkey(x);
+    if (px && px === pkey(y)) return C.SIB_GAP;
+  }
+  const roots = u => new Set(u.members.map(id => surnameRoot(byId.get(id))).filter(Boolean));
+  const ra = roots(a), rb = roots(b);
+  for (const r of ra) if (rb.has(r)) return C.UNIT_GAP;
+  return C.BRANCH_GAP;
+}
 
-    // determine which nodes are visible
-    // a node is hidden if any ancestor (direct chain) is collapsed
-    const hidden = new Set();
-    function hideChildren(id) {
-      childrenOf[id].forEach(cid => {
-        if (!hidden.has(cid)) {
-          hidden.add(cid);
-          // also hide their partner if all parents hidden
-          const partner = partnerOf[cid];
-          if (partner) {
-            const partnerParents = byId[partner].parents;
-            const allParentsHidden = partnerParents.every(p => hidden.has(p) || collapsedSet.has(p));
-            if (allParentsHidden || partnerParents.length === 0) {
-              hidden.add(partner);
-            }
-          }
-          hideChildren(cid);
-        }
-      });
+// weighted isotonic regression (pool adjacent violators), unit weights
+function pava(t) {
+  const val = [], w = [];
+  for (let i = 0; i < t.length; i++) {
+    val.push(t[i]); w.push(1);
+    while (val.length > 1 && val[val.length - 2] >= val[val.length - 1]) {
+      const v2 = val.pop(), w2 = w.pop();
+      const k = val.length - 1;
+      val[k] = (val[k] * w[k] + v2 * w2) / (w[k] + w2);
+      w[k] += w2;
     }
-    collapsedSet.forEach(id => hideChildren(id));
+  }
+  const out = [];
+  for (let b = 0; b < val.length; b++)
+    for (let j = 0; j < w[b]; j++) out.push(val[b]);
+  return out;
+}
 
-    // ── x positions ──────────────────────────────────────────────
-    // Two stages: (1) order each generation to minimise edge crossings, so
-    // siblings and couples sit next to each other (this is what stops connectors
-    // from different branches crossing/overlapping); (2) assign x with an
-    // order-preserving, centred spacing solver (PAVA), so parents stay centred
-    // over their children without any cards overlapping.
-    const x = {};
-    const y = {};
-    members.forEach(m => { y[m.id] = level[m.id] * ROW_H + 20; });
+// enforce order + minimum separations while staying closest to targets
+function resolveRow(units, model) {
+  const prefix = [0];
+  for (let i = 1; i < units.length; i++)
+    prefix.push(prefix[i - 1] + units[i - 1].w + gapBetween(units[i - 1], units[i], model));
+  const z = pava(units.map((u, i) => u.t - prefix[i]));
+  units.forEach((u, i) => { u.x = z[i] + prefix[i]; });
+}
 
-    const visIds = members.filter(m => !hidden.has(m.id)).map(m => m.id);
+// offset of a member's card centre from its unit's left edge
+function memberOffset(u, id) {
+  return u.members.indexOf(id) * (C.CARD_W + C.COUPLE_DX) + C.CARD_W / 2;
+}
+// offset of the couple dot between adjacent members i and i+1
+function dotOffset(i) {
+  return (i + 1) * (C.CARD_W + C.COUPLE_DX) - C.COUPLE_DX / 2;
+}
 
-    // Group each visible person into a "unit": a couple (2 cards) or a single (1).
-    const visPartner = id => {
-      const p = partnerOf[id];
-      return (p && !hidden.has(p) && level[p] === level[id]) ? p : null;
-    };
-    const rank = z => (byId[z].gender === 'male' ? '0:' : '1:') + z; // male left, then id
-    const unitOf = {}, unitMembers = {}, unitLevel = {};
-    visIds.forEach(id => {
-      if (unitOf[id]) return;
-      const p = visPartner(id);
-      if (p && !unitOf[p]) {
-        const pair = rank(id) <= rank(p) ? [id, p] : [p, id];
-        const key = 'U:' + pair.join('+');
-        unitOf[pair[0]] = key; unitOf[pair[1]] = key;
-        unitMembers[key] = pair; unitLevel[key] = level[id];
-      } else {
-        const key = 'S:' + id;
-        unitOf[id] = key; unitMembers[key] = [id]; unitLevel[key] = level[id];
-      }
-    });
-    const uWidth  = u => unitMembers[u].length === 2 ? COUPLE_DX + CARD_W : CARD_W;
-    const uCenter = u => x[unitMembers[u][0]] + uWidth(u) / 2;
-    const setUCenter = (u, c) => {
-      const mm = unitMembers[u];
-      x[mm[0]] = c - uWidth(u) / 2;
-      if (mm.length === 2) x[mm[1]] = x[mm[0]] + COUPLE_DX;
-    };
-    const childUnits = u => {
-      const out = [];
-      unitMembers[u].forEach(mid => childrenOf[mid].forEach(c => {
-        if (hidden.has(c)) return;
-        const cu = unitOf[c];
-        if (cu !== u && !out.includes(cu)) out.push(cu);
-      }));
-      return out;
-    };
-    const parentUnits = u => {
-      const out = [];
-      unitMembers[u].forEach(mid => byId[mid].parents.forEach(p => {
-        if (hidden.has(p)) return;
-        const pu = unitOf[p];
-        if (pu && pu !== u && !out.includes(pu)) out.push(pu);
-      }));
-      return out;
-    };
+// where a child's connector hangs from: couple dot if both visible parents
+// are adjacent in one unit, else the single parent's card centre
+function hangFor(child, model, hidden, unitOf) {
+  const vp = child.parents.filter(p => !hidden.has(p));
+  if (!vp.length) return null;
+  const u = unitOf.get(vp[0]);
+  if (!u) return null;
+  if (vp.length === 2 && unitOf.get(vp[1]) === u) {
+    const i = u.members.indexOf(vp[0]), j = u.members.indexOf(vp[1]);
+    if (Math.abs(i - j) === 1) return { unit: u, off: dotOffset(Math.min(i, j)), dot: true, key: vp.slice().sort().join("+") };
+    return { unit: u, off: (memberOffset(u, vp[0]) + memberOffset(u, vp[1])) / 2, dot: false, key: vp.slice().sort().join("+") };
+  }
+  return { unit: u, off: memberOffset(u, vp[0]), dot: false, key: vp[0] };
+}
 
-    // Three gap tiers: siblings pack tight; unrelated units sharing a surname get a wider
-    // channel; different family-name branches get the widest. Surnames are gender-normalized
-    // (Денисов/Денисова) and compared per UNIT, so a mixed-surname couple [Denisov · Kusakina]
-    // still counts as the Denisov branch and a married-in spouse never forces a wide gap.
-    const parentKey = id => byId[id].parents.slice().sort().join('|');
-    const areSiblings = (a, b) => { const p = parentKey(a); return p.length > 0 && p === parentKey(b); };
-    const surnameRoot = id => byId[id].lastName.toLowerCase().replace(/[ая]$/, '');
-    const shareSurname = (ua, ub) => {
-      const roots = new Set(unitMembers[ua].map(surnameRoot).filter(Boolean));
-      return unitMembers[ub].some(id => roots.has(surnameRoot(id)));
-    };
-    const gapBetween = (leftU, rightU) => {
-      const lm = unitMembers[leftU], rm = unitMembers[rightU];
-      if (areSiblings(lm[lm.length - 1], rm[0])) return SIB_GAP;
-      return shareSurname(leftU, rightU) ? UNIT_GAP : BRANCH_GAP;
-    };
-    const familyKeyOf = u => parentKey(unitMembers[u][0]) || ('Z:' + u);
-    const unitBirthOf = u => birthRank(byId, unitMembers[u][0]);
+function computeLayout(model, collapsed) {
+  const hidden = computeHidden(model, collapsed || new Set());
+  const units = buildUnits(model, hidden);
 
-    // units grouped by level, deterministic initial order
-    const order = {};
-    Object.keys(unitMembers).forEach(u => { (order[unitLevel[u]] = order[unitLevel[u]] || []).push(u); });
-    const sortedLv = Object.keys(order).map(Number).sort((a, b) => a - b);
-    sortedLv.forEach(lv =>
-      order[lv].sort((a, b) => {
-        const ka = familyKeyOf(a), kb = familyKeyOf(b);
-        if (ka !== kb) return ka < kb ? -1 : 1;
-        return unitBirthOf(a) - unitBirthOf(b) || (a < b ? -1 : 1);
-      })
-    );
+  const rows = new Map();
+  for (const u of units) {
+    if (!rows.has(u.level)) rows.set(u.level, []);
+    rows.get(u.level).push(u);
+  }
+  const levelsSorted = [...rows.keys()].sort((a, b) => a - b);
 
-    const indexMap = lv => {
-      const m = {}; (order[lv] || []).forEach((u, i) => { m[u] = i; }); return m;
-    };
-    const median = vals => {
-      if (!vals.length) return null;
-      const v = vals.slice().sort((a, b) => a - b), n = v.length;
-      return n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
-    };
-    // crossing-reduction sweeps (median heuristic); couples move as one unit
-    for (let sweep = 0; sweep < 20; sweep++) {
-      const down = sweep % 2 === 0;
-      const seq = down ? sortedLv.slice(1) : sortedLv.slice(0, -1).reverse();
-      seq.forEach(lv => {
-        const adj = indexMap(down ? lv - 1 : lv + 1);
-        const key = {};
-        order[lv].forEach((u, i) => {
-          const nb = (down ? parentUnits(u) : childUnits(u)).map(z => adj[z]).filter(v => v !== undefined);
-          const med = median(nb);
-          key[u] = med === null ? i : med;
-        });
-        order[lv] = order[lv]
-          .map((u, i) => [key[u], i, u])
-          .sort((a, b) => a[0] - b[0] || a[1] - b[1])
-          .map(t => t[2]);
-      });
+  const unitOf = new Map();
+  for (const u of units) for (const id of u.members) unitOf.set(id, u);
+  const { byId } = model;
+
+  let childHang, edges, edgesByParentRow;
+  const buildEdges = () => {
+    childHang = new Map();          // child id -> hang descriptor
+    edges = [];                     // parent unit -> child, absolute in-unit offsets
+    edgesByParentRow = new Map();
+    for (const u of units) for (const id of u.members) {
+      const h = hangFor(byId.get(id), model, hidden, unitOf);
+      if (h) childHang.set(id, h);
     }
+    for (const [cid, h] of childHang) {
+      const cu = unitOf.get(cid);
+      edges.push({ pu: h.unit, pOff: h.off, cu, cOff: memberOffset(cu, cid) });
+    }
+    for (const e of edges) {
+      if (!edgesByParentRow.has(e.pu.level)) edgesByParentRow.set(e.pu.level, []);
+      edgesByParentRow.get(e.pu.level).push(e);
+    }
+  };
+  buildEdges();
 
-    // Sibling cohesion pass: keep each family's children contiguous and in birth order.
-    //
-    // The crossing-reduction sweeps can scatter siblings because:
-    //   • childless siblings get a stale "current index" key while siblings with children
-    //     get a fresh median-of-children key — causing drift.
-    //   • couples are keyed to only ONE partner's family, leaving the other partner's
-    //     siblings stranded on the far side.
-    //
-    // Fix: register every couple unit in BOTH partners' families. Couples that bridge two
-    // families get sort key = average of the two families' medians, so they land naturally
-    // BETWEEN the two sibling groups instead of inside one of them.
-    sortedLv.forEach(lv => {
-      // Build family-position index: each unit registers under all its members' parent keys
-      const fPos = {};
-      order[lv].forEach((u, i) => {
-        const seenFks = new Set();
-        unitMembers[u].forEach(mid => {
-          const fk = parentKey(mid) || ('Z:' + u);
-          if (!seenFks.has(fk)) { seenFks.add(fk); (fPos[fk] = fPos[fk] || []).push(i); }
-        });
-      });
-      // Median position for each family group
-      const fMed = {};
-      Object.entries(fPos).forEach(([fk, pos]) => {
-        const s = pos.slice().sort((a, b) => a - b), n = s.length;
-        fMed[fk] = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
-      });
-      // Sort key: average of all family medians the unit belongs to.
-      // Singles → one family's median. Bridging couples → midpoint of both families.
-      const unitSortKey = u => {
-        const fks = [...new Set(unitMembers[u].map(mid => parentKey(mid) || ('Z:' + u)))];
-        const meds = fks.map(fk => fMed[fk]).filter(v => v !== undefined);
-        return meds.length ? meds.reduce((s, v) => s + v, 0) / meds.length : Infinity;
+  /* --- phase 1: ORDER — structural in-order emission (genogram hourglass).
+     Each couple's father-side ancestry is emitted left of it, mother-side
+     right; collateral branches sit on their connecting side; the anchor's
+     unit is spliced between its parents' two ancestries. Crossing-free by
+     construction for pedigree data. --- */
+
+  const seq = new Map();
+  let seqN = 0;
+  const place = (u) => { if (!seq.has(u)) seq.set(u, seqN++); };
+  const parentUnitOf = (id) => { const h = childHang.get(id); return h ? h.unit : null; };
+  const childUnitsOf = (P, except) => {
+    const seen = new Set(), list = [];
+    for (const e of edges)
+      if (e.pu === P && e.cu !== except && !seen.has(e.cu)) { seen.add(e.cu); list.push(e); }
+    list.sort((a, b) => a.pOff - b.pOff || a.cu.birth - b.cu.birth || a.cu.minIdx - b.cu.minIdx);
+    return list.map(e => e.cu);
+  };
+  const ancsOf = (U, except) => {
+    const first = parentUnitOf(U.members[0]);
+    const pRs = [];
+    for (let i = 1; i < U.members.length; i++) {
+      const p = parentUnitOf(U.members[i]);
+      if (p && p !== first && p !== except && !pRs.includes(p)) pRs.push(p);
+    }
+    return { pL: (first && first !== except) ? first : null, pRs };
+  };
+
+  // V reached from above: [left in-law ancestry, V, children, right in-law ancestry]
+  function emitDown(V, fromP) {
+    if (seq.has(V)) return;
+    const { pL, pRs } = ancsOf(V, fromP);
+    if (pL) emitAnc(pL, V, "left");
+    place(V);
+    for (const cu of childUnitsOf(V, null)) emitDown(cu, V);
+    for (const p of pRs) emitAnc(p, V, "right");
+  }
+
+  // how much of an ancestor block descends below row `plevel` — such
+  // branches must be placed on the outer side or the block's fans would be
+  // crossed by its child couple's own fan
+  function descMass(U, plevel, seen) {
+    if (seen.has(U)) return 0;
+    seen.add(U);
+    let m = U.level > plevel ? 1 : 0;
+    for (const cu of childUnitsOf(U, null)) m += descMass(cu, plevel, seen);
+    return m;
+  }
+  function ancMass(X, cameFrom, plevel, seen) {
+    if (!X || seen.has(X)) return 0;
+    seen.add(X);
+    let m = 0;
+    for (const cu of childUnitsOf(X, cameFrom)) m += descMass(cu, plevel, seen);
+    for (const id of X.members) m += ancMass(parentUnitOf(id), X, plevel, seen);
+    return m;
+  }
+  // flip a couple so the member whose ancestry carries deep collaterals
+  // faces the outer side (and each member faces their own parents)
+  function orientAnc(P, side) {
+    if (P.members.length !== 2) return;
+    const m0 = ancMass(parentUnitOf(P.members[0]), P, P.level, new Set([P]));
+    const m1 = ancMass(parentUnitOf(P.members[1]), P, P.level, new Set([P]));
+    if (m0 === m1) return;
+    const heavyFirst = m0 > m1;
+    if ((side === "left" && !heavyFirst) || (side === "right" && heavyFirst))
+      P.members.reverse();
+  }
+
+  // P reached from below (ancestor block sitting on `side` of fromChild);
+  // collaterals go on P's inner edge, toward the child they flank
+  function emitAnc(P, fromChild, side) {
+    if (seq.has(P)) return;
+    orientAnc(P, side);
+    const collats = () => { for (const cu of childUnitsOf(P, fromChild)) emitDown(cu, P); };
+    const inner = () => {
+      const { pL, pRs } = ancsOf(P, null);
+      if (pL) emitAnc(pL, P, "left");
+      place(P);
+      for (const p of pRs) emitAnc(p, P, "right");
+    };
+    if (side === "right") { collats(); inner(); }
+    else { inner(); collats(); }
+  }
+
+  const anchorId = model.anchorEff;
+  const anchorUnit = anchorId ? unitOf.get(anchorId) : null;
+  if (anchorUnit && !hidden.has(anchorId)) {
+    const aIdx = anchorUnit.members.indexOf(anchorId);
+    const P = parentUnitOf(anchorId);                  // anchor's own parents
+    const spouseAncs = [];
+    anchorUnit.members.forEach((id, i) => {
+      const p = parentUnitOf(id);
+      if (p && p !== P && !spouseAncs.some(s => s.p === p)) spouseAncs.push({ p, side: i < aIdx ? "left" : "right" });
+    });
+    for (const s of spouseAncs) if (s.side === "left") emitAnc(s.p, anchorUnit, "left");
+    const centre = () => {
+      place(anchorUnit);
+      for (const cu of childUnitsOf(anchorUnit, null)) emitDown(cu, anchorUnit);
+    };
+    // splice the spine: every lineal ancestor couple splits around the centre,
+    // recursing upward until a couple with ancestry on both sides is found
+    function emitSpineUp(U, fromChild, centerFn) {
+      if (seq.has(U)) { centerFn(); return; }
+      const { pL, pRs } = ancsOf(U, null);
+      const self = () => {
+        place(U);
+        for (const cu of childUnitsOf(U, fromChild)) emitDown(cu, U);
+        centerFn();
       };
-      order[lv].sort((a, b) => {
-        const ska = unitSortKey(a), skb = unitSortKey(b);
-        if (Math.abs(ska - skb) > 0.001) return ska - skb;
-        // Equal sort keys: keep siblings of the same family together before
-        // falling back to birth order. Without this, two families whose fMed
-        // values accidentally coincide get interleaved by birth year, splitting
-        // siblings (e.g. nikita/stefa split by dasha when fMed['ira']==fMed['alla']).
-        const fka = familyKeyOf(a), fkb = familyKeyOf(b);
-        if (fka !== fkb) return fka < fkb ? -1 : 1;
-        return unitBirthOf(a) - unitBirthOf(b) || (a < b ? -1 : 1);
-      });
-    });
-
-    // ── hard-coded orientation: paternal line left, anchor centre, maternal right ──
-    // A stable final sort by unit "side" (mean of its members' side). The anchor's
-    // parents form a bridging couple whose mean is 0, so it lands in the centre band;
-    // the crossing-reduced order is preserved within each band.
-    const unitSide = u => {
-      const ss = unitMembers[u].map(id => (side && side[id] !== undefined ? side[id] : 0));
-      return ss.reduce((a, b) => a + b, 0) / ss.length;
-    };
-    sortedLv.forEach(lv => {
-      order[lv] = order[lv]
-        .map((u, i) => [unitSide(u), i, u])
-        .sort((a, b) => a[0] - b[0] || a[1] - b[1])
-        .map(t => t[2]);
-    });
-
-    // seed x left→right in the chosen order
-    sortedLv.forEach(lv => {
-      let cur = 20;
-      order[lv].forEach((u, i) => {
-        const mm = unitMembers[u];
-        x[mm[0]] = cur;
-        if (mm.length === 2) x[mm[1]] = cur + COUPLE_DX;
-        const nxt = order[lv][i + 1];
-        cur += uWidth(u) + (nxt ? gapBetween(u, nxt) : UNIT_GAP);
-      });
-    });
-
-    // place a level at target centres while keeping order + min separation
-    const resolve = (lv, targets) => {
-      const us = order[lv], n = us.length;
-      if (!n) return;
-      const S = [0];
-      for (let k = 1; k < n; k++)
-        S[k] = S[k - 1] + (uWidth(us[k - 1]) + uWidth(us[k])) / 2 + gapBetween(us[k - 1], us[k]);
-      const a = us.map((u, k) => targets[u] - S[k]);
-      const b = pava(a);
-      us.forEach((u, k) => setUCenter(u, b[k] + S[k]));
-    };
-    // centre each unit over the given neighbours (children or parents), then resolve
-    const centerOver = (lv, neighbourUnits) => {
-      const tg = {};
-      order[lv].forEach(u => {
-        const nb = neighbourUnits(u);
-        tg[u] = nb.length ? nb.reduce((s, z) => s + uCenter(z), 0) / nb.length : uCenter(u);
-      });
-      resolve(lv, tg);
-    };
-    // alternate bottom-up (parents over children) and top-down (children under parents)
-    for (let iter = 0; iter < 8; iter++) {
-      for (let i = sortedLv.length - 1; i >= 0; i--) centerOver(sortedLv[i], childUnits);
-      for (let i = 0; i < sortedLv.length; i++) centerOver(sortedLv[i], parentUnits);
-    }
-
-    // Snap pass: center each family's children as a rigid block under the parents.
-    // Top-down so parent positions are stable before we process their children.
-    // Children claimed by multiple parents (intermarriage) receive the average desired shift.
-    for (let si = 0; si < sortedLv.length - 1; si++) {
-      const childLv = sortedLv[si + 1];
-      if (!order[childLv] || !order[childLv].length) continue;
-      const shiftAcc = {}, shiftCnt = {};
-      order[childLv].forEach(u => { shiftAcc[u] = 0; shiftCnt[u] = 0; });
-      order[sortedLv[si]].forEach(pu => {
-        const kids = childUnits(pu).filter(cu => unitLevel[cu] === childLv);
-        if (!kids.length) return;
-        const parentMid = uCenter(pu);
-        const allMs = kids.flatMap(cu => unitMembers[cu]);
-        const gl = Math.min(...allMs.map(mid => x[mid]));
-        const gr = Math.max(...allMs.map(mid => x[mid])) + CARD_W;
-        const shift = parentMid - (gl + gr) / 2;
-        kids.forEach(cu => { shiftAcc[cu] += shift; shiftCnt[cu]++; });
-      });
-      let anyMoved = false;
-      order[childLv].forEach(u => {
-        if (!shiftCnt[u]) return;
-        const avg = shiftAcc[u] / shiftCnt[u];
-        if (Math.abs(avg) >= 1) { unitMembers[u].forEach(mid => { x[mid] += avg; }); anyMoved = true; }
-      });
-      if (anyMoved) {
-        const tg = {};
-        order[childLv].forEach(u => { tg[u] = uCenter(u); });
-        resolve(childLv, tg);
+      if (pL && pRs.length) {
+        emitAnc(pL, U, "left");
+        self();
+        for (const p of pRs) emitAnc(p, U, "right");
+      } else if (pL) {
+        emitSpineUp(pL, U, self);
+      } else if (pRs.length) {
+        emitSpineUp(pRs[0], U, self);
+        for (const p of pRs.slice(1)) emitAnc(p, U, "right");
+      } else {
+        self();
       }
     }
-
-    // normalize so the leftmost card sits at x = 20
-    if (visIds.length) {
-      const minX = Math.min(...visIds.map(id => x[id]));
-      visIds.forEach(id => { x[id] += 20 - minX; });
-    }
-
-    // canvas size
-    const xs = members.filter(m => !hidden.has(m.id) && x[m.id] !== undefined).map(m => x[m.id]);
-    const ys = members.filter(m => !hidden.has(m.id)).map(m => y[m.id]);
-    const W = (xs.length ? Math.max(...xs) + CARD_W : 800) + 40;
-    const H = (ys.length ? Math.max(...ys) + CARD_H : 600) + 60;
-
-    return { x, y, hidden, W, H };
+    if (P) emitSpineUp(P, anchorUnit, centre);
+    else centre();
+    for (const s of spouseAncs) if (s.side === "right") emitAnc(s.p, anchorUnit, "right");
   }
+  // remaining components / no-anchor fallback
+  for (const u of units.slice().sort((a, b) => a.level - b.level || a.minIdx - b.minIdx))
+    if (!seq.has(u)) emitDown(u, null);
 
-  return { computeLayout, collapsed };
-}
+  buildEdges();   // member orders may have flipped — refresh hang offsets
 
-// ═══════════════════════════════════════════════════════
-// MODULE: render.js — draw cards + SVG connectors
-// ═══════════════════════════════════════════════════════
-function render(family, model, layoutState) {
-  const { members, byId } = family;
-  const { childrenOf, couples, partnerOf, level } = model;
-  const { collapsed } = layoutState;
-  const { x, y, hidden, W, H } = layoutState.computeLayout(collapsed);
-
-  const canvas = document.getElementById('canvas');
-  const svg    = document.getElementById('connectors');
-
-  // clear
-  canvas.querySelectorAll('.card').forEach(el => el.remove());
-  svg.innerHTML = '';
-  svg.setAttribute('width',  W);
-  svg.setAttribute('height', H);
-  canvas.style.width  = W + 'px';
-  canvas.style.height = H + 'px';
-
-  // ── CONNECTORS ──
-  function cx(id) { return x[id] + CARD_W / 2; }
-  function cy(id) { return y[id] + CARD_H / 2; }
-  function cardBottom(id) { return y[id] + CARD_H; }
-  function cardTop(id)    { return y[id]; }
-
-  function addPath(d) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('class', 'connector');
-    svg.appendChild(path);
+  const idx = new Map();
+  const reindex = row => row.forEach((u, i) => idx.set(u, i));
+  for (const lv of levelsSorted) {
+    const row = rows.get(lv);
+    row.sort((a, b) => seq.get(a) - seq.get(b));
+    reindex(row);
   }
+  const frac = (u, off) => idx.get(u) + off / u.w;
+  const band = u => u.side < -1e-9 ? -1 : u.side > 1e-9 ? 1 : 0;
 
-  // couple lines
-  couples.forEach(c => {
-    const [a, b] = c.ids;
-    if (hidden.has(a) || hidden.has(b)) return;
-    const ax = x[a] + CARD_W, bx = x[b];
-    const midY = y[a] + CARD_H / 2;
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', ax); line.setAttribute('y1', midY);
-    line.setAttribute('x2', bx); line.setAttribute('y2', midY);
-    line.setAttribute('class', 'couple-line');
-    svg.appendChild(line);
-
-    // dot at the couple midpoint (== child-trunk junction)
-    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('cx', (ax + bx) / 2);
-    dot.setAttribute('cy', midY);
-    dot.setAttribute('r', 3);
-    dot.setAttribute('class', 'couple-dot');
-    svg.appendChild(dot);
-  });
-
-  // parent→child connectors ── three-pass approach:
-  //  1. Build groups keyed by parent set.
-  //  2. Compute junction + bar extents for every group, then run sweep-line
-  //     interval graph coloring per (parent_level → child_level) pair so that
-  //     any two groups whose bars overlap in X are placed in different Y lanes.
-  //     Lanes are spread 30 %–70 % of trunk height, guaranteeing clear separation.
-  //  3. Draw: trunk → sibling bar → drops.
-
-  // ── Pass 1: build groups ──
-  const groups = {};
-  members.forEach(m => {
-    if (hidden.has(m.id)) return;
-    const visParents = m.parents.filter(p => !hidden.has(p));
-    if (visParents.length === 0) return;
-    const key = visParents.slice().sort().join('|');
-    if (!groups[key]) groups[key] = { parents: visParents, children: [], key };
-    groups[key].children.push(m.id);
-  });
-
-  // ── Pass 2: geometry + lane assignment ──
-  Object.values(groups).forEach(g => {
-    const ps = g.parents;
-    if (ps.length >= 2) {
-      const sorted = ps.slice().sort((a, b) => x[a] - x[b]);
-      g.junctionX = (x[sorted[0]] + CARD_W + x[sorted[sorted.length - 1]]) / 2;
-      g.junctionY = y[sorted[0]] + CARD_H / 2;
-    } else {
-      g.junctionX = cx(ps[0]);
-      g.junctionY = cardBottom(ps[0]);
+  // transpose refinement: swap adjacent units when it removes edge crossings
+  const rowCrossings = (lv) => {
+    const list = edgesByParentRow.get(lv) || [];
+    let c = 0;
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      const d = (frac(a.pu, a.pOff) - frac(b.pu, b.pOff)) * (frac(a.cu, a.cOff) - frac(b.cu, b.cOff));
+      if (d < 0) c++;
     }
-    g.childTopY = Math.min(...g.children.map(c => cardTop(c)));
-    g.trunkH    = Math.max(g.childTopY - g.junctionY, 1);
-    const centers = g.children.map(c => cx(c));
-    g.barLeft = Math.min(...centers);
-    g.barRight = Math.max(...centers);
-    g.barL = Math.min(g.barLeft, g.junctionX); // extend toward junction if needed
-    g.barR = Math.max(g.barRight, g.junctionX);
-  });
-
-  // Sweep-line coloring: for every (parent_lv → child_lv) pair, sort groups by
-  // their left bar edge and greedily assign each to the first lane whose rightmost
-  // bar ends before the new bar starts. Groups that don't overlap get lane 0 (same Y).
-  const lvPairs = {};
-  Object.values(groups).forEach(g => {
-    const pk = `${level[g.parents[0]]}|${level[g.children[0]]}`;
-    (lvPairs[pk] = lvPairs[pk] || []).push(g);
-  });
-  Object.values(lvPairs).forEach(gs => {
-    const sorted = gs.slice().sort((a, b) => a.barL - b.barL);
-    const laneEndX = []; // rightmost X reached by each lane
-    sorted.forEach(g => {
-      let lane = 0;
-      while (lane < laneEndX.length && laneEndX[lane] >= g.barL - 2) lane++;
-      g.lane = lane;
-      if (lane < laneEndX.length) laneEndX[lane] = g.barR;
-      else laneEndX.push(g.barR);
-    });
-    const numLanes = laneEndX.length;
-    gs.forEach(g => {
-      // Spread lanes evenly from 30 % to 70 % of trunk height
-      const t = numLanes <= 1 ? 0.5 : 0.30 + (g.lane / (numLanes - 1)) * 0.40;
-      g.sibBarY = g.junctionY + g.trunkH * t;
-    });
-  });
-
-  // ── Pass 3: draw ──
-  Object.values(groups).forEach(g => {
-    addPath(`M ${g.junctionX} ${g.junctionY} L ${g.junctionX} ${g.sibBarY}`);
-    if (g.barR - g.barL > 0.5)
-      addPath(`M ${g.barL} ${g.sibBarY} L ${g.barR} ${g.sibBarY}`);
-    g.children.forEach(c =>
-      addPath(`M ${cx(c)} ${g.sibBarY} L ${cx(c)} ${cardTop(c)}`)
-    );
-  });
-
-  // ── CARDS ──
-  members.forEach(m => {
-    if (hidden.has(m.id)) return;
-    const card = document.createElement('div');
-    card.className = 'card ' + (m.gender || 'other');
-    card.dataset.id = m.id;
-    card.style.left = x[m.id] + 'px';
-    card.style.top  = y[m.id] + 'px';
-
-    const hasVisChildren = childrenOf[m.id].some(c => !hidden.has(c));
-
-    card.innerHTML = `
-      ${hasVisChildren ? `<span class="collapse-btn" data-collapse="${m.id}">${collapsed.has(m.id) ? '+' : '−'}</span>` : ''}
-      <div class="card-name">
-        <span class="card-gender-dot ${m.gender || 'other'}"></span>${m.firstName}
-      </div>
-      <div class="card-surname">${m.lastName}</div>
-      <div class="card-dates">${displayDates(m)}</div>
-    `;
-
-    card.addEventListener('click', e => {
-      if (e.target.classList.contains('collapse-btn')) return;
-      openSideCard(m.id, family, model);
-      document.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-    });
-
-    const colBtn = card.querySelector('.collapse-btn');
-    if (colBtn) {
-      colBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        const id = colBtn.dataset.collapse;
-        if (collapsed.has(id)) collapsed.delete(id);
-        else collapsed.add(id);
-        render(family, model, layoutState);
-      });
-    }
-
-    canvas.appendChild(card);
-  });
-}
-
-// ═══════════════════════════════════════════════════════
-// MODULE: interact.js — side card + pan/zoom
-// ═══════════════════════════════════════════════════════
-function openSideCard(id, family, model) {
-  const m = family.byId[id];
-  const { partnerOf, childrenOf } = model;
-
-  document.getElementById('sc-name').textContent    = m.firstName;
-  document.getElementById('sc-surname').textContent = m.lastName;
-
-  // gender badge
-  const genderEl = document.getElementById('sc-gender');
-  const gLabel = { male: 'Male', female: 'Female', other: 'Other' }[m.gender] || m.gender;
-  genderEl.innerHTML = `<span class="sc-gender-badge ${m.gender}">${gLabel}</span>`;
-
-  // born
-  const bornEl = document.getElementById('sc-born');
-  const bd = formatDate(m.birthDate);
-  bornEl.textContent = bd || '—';
-  bornEl.className = 'sc-value' + (bd ? '' : ' muted');
-
-  // died
-  const diedSection = document.getElementById('sc-death-section');
-  const diedEl = document.getElementById('sc-died');
-  if (m.deathDate === null) {
-    diedSection.style.display = 'none';
-  } else {
-    diedSection.style.display = '';
-    const dd = formatDate(m.deathDate);
-    diedEl.textContent = dd || '—';
-    diedEl.className = 'sc-value' + (dd ? '' : ' muted');
-  }
-
-  function makeRelBtn(pid) {
-    const p = family.byId[pid];
-    if (!p) return null;
-    const btn = document.createElement('button');
-    btn.className = `sc-rel-btn ${p.gender}`;
-    btn.textContent = `${p.firstName} ${p.lastName}`;
-    btn.onclick = () => {
-      document.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
-      const card = document.querySelector(`.card[data-id="${pid}"]`);
-      if (card) {
-        card.classList.add('selected');
-        scrollToCard(pid);
+    return c;
+  };
+  let improved = true, guard = 0;
+  while (improved && guard++ < 12) {
+    improved = false;
+    for (const lv of levelsSorted) {
+      const row = rows.get(lv);
+      for (let i = 0; i + 1 < row.length; i++) {
+        if (band(row[i]) !== band(row[i + 1])) continue;
+        const before = rowCrossings(lv - 1) + rowCrossings(lv);
+        [row[i], row[i + 1]] = [row[i + 1], row[i]];
+        reindex(row);
+        const after = rowCrossings(lv - 1) + rowCrossings(lv);
+        if (after < before) { improved = true; }
+        else { [row[i], row[i + 1]] = [row[i + 1], row[i]]; reindex(row); }
       }
-      openSideCard(pid, family, model);
-    };
-    return btn;
+    }
   }
 
-  // parents
-  const parentsEl  = document.getElementById('sc-parents');
-  const parentsSection = document.getElementById('sc-parents-section');
-  parentsEl.innerHTML = '';
-  m.parents.forEach(pid => {
-    const btn = makeRelBtn(pid);
-    if (btn) parentsEl.appendChild(btn);
-  });
-  parentsSection.style.display = m.parents.length ? '' : 'none';
+  /* --- phase 2: COORDINATES — barycentric pulls + PAVA, order frozen --- */
 
-  // partners
-  const partnersEl = document.getElementById('sc-partners');
-  const partnerSection = document.getElementById('sc-partner-section');
-  partnersEl.innerHTML = '';
-  const partner = partnerOf[id];
-  if (partner) {
-    const btn = makeRelBtn(partner);
-    if (btn) partnersEl.appendChild(btn);
-  }
-  partnerSection.style.display = partner ? '' : 'none';
-
-  // children
-  const childrenEl = document.getElementById('sc-children');
-  const childSection = document.getElementById('sc-children-section');
-  childrenEl.innerHTML = '';
-  const kids = childrenOf[id] || [];
-  kids.forEach(cid => {
-    const btn = makeRelBtn(cid);
-    if (btn) childrenEl.appendChild(btn);
-  });
-  childSection.style.display = kids.length ? '' : 'none';
-
-  // notes
-  const notesEl = document.getElementById('sc-notes');
-  const notesSection = document.getElementById('sc-notes-section');
-  if (m.notes) {
-    notesEl.textContent = m.notes;
-    notesEl.className = 'sc-value';
-    notesSection.style.display = '';
-  } else {
-    notesSection.style.display = 'none';
+  for (const lv of levelsSorted) {   // seed: pack tightly in final order
+    const row = rows.get(lv);
+    let x = 0;
+    row.forEach((u, i) => {
+      if (i) x += gapBetween(row[i - 1], u, model);
+      u.x = x; x += u.w;
+    });
   }
 
-  document.getElementById('side-card').classList.add('open');
+  const coordParentPull = (u) => {
+    let s = 0, n = 0;
+    for (const id of u.members) {
+      const h = childHang.get(id);
+      if (h) { s += h.unit.x + h.off - memberOffset(u, id); n++; }
+    }
+    return n ? s / n : null;
+  };
+  const coordChildPull = (u) => {
+    let s = 0, n = 0;
+    for (const e of edges) if (e.pu === u) { s += e.cu.x + e.cOff - e.pOff; n++; }
+    return n ? s / n : null;
+  };
+
+  for (let it = 0; it < C.SWEEPS; it++) {
+    for (const lv of levelsSorted) {                 // down
+      const row = rows.get(lv);
+      for (const u of row) u.t = coordParentPull(u) ?? coordChildPull(u) ?? u.x;
+      resolveRow(row, model);
+    }
+    for (const lv of [...levelsSorted].reverse()) {  // up
+      const row = rows.get(lv);
+      for (const u of row) u.t = coordChildPull(u) ?? coordParentPull(u) ?? u.x;
+      resolveRow(row, model);
+    }
+  }
+
+  // positions + bounds
+  const pos = new Map();
+  let minX = Infinity, maxX = -Infinity, maxLv = 0;
+  for (const u of units) {
+    const y = C.PAD + u.level * C.ROW_H;
+    u.members.forEach((id, i) => {
+      const x = u.x + i * (C.CARD_W + C.COUPLE_DX);
+      pos.set(id, { x, y });
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x + C.CARD_W);
+    });
+    maxLv = Math.max(maxLv, u.level);
+  }
+  const shift = C.PAD - (minX === Infinity ? 0 : minX);
+  for (const p of pos.values()) p.x += shift;
+  for (const u of units) u.x += shift;
+
+  return {
+    hidden, units, unitOf, pos, childHang,
+    bounds: {
+      w: (maxX === -Infinity ? 0 : maxX - minX) + 2 * C.PAD,
+      h: C.PAD * 2 + maxLv * C.ROW_H + C.CARD_H,
+    },
+  };
 }
 
-function scrollToCard(id) {
-  const card = document.querySelector(`.card[data-id="${id}"]`);
-  if (!card) return;
-  const vp = document.getElementById('viewport');
-  const vpW = vp.clientWidth, vpH = vp.clientHeight;
-  const cardX = parseFloat(card.style.left);
-  const cardY = parseFloat(card.style.top);
-  // center card in viewport
-  state.panX = vpW / 2 - (cardX + CARD_W / 2) * state.scale;
-  state.panY = vpH / 2 - (cardY + CARD_H / 2) * state.scale;
-  applyTransform();
+/* ---------- 6. connectors ---------- */
+
+function buildConnectors(model, layout) {
+  const { byId, childrenOf, partnersOf } = model;
+  const { units, unitOf, pos, hidden, childHang } = layout;
+  const couples = [], dots = [], trunks = [];
+
+  for (const u of units) {
+    const y = C.PAD + u.level * C.ROW_H + C.CARD_H / 2;
+    for (let i = 0; i + 1 < u.members.length; i++) {
+      const a = u.members[i], b = u.members[i + 1];
+      if (!partnersOf.get(a).has(b)) continue;
+      const x1 = pos.get(a).x + C.CARD_W, x2 = pos.get(b).x;
+      couples.push({ x1, x2, y });
+      dots.push({ x: (x1 + x2) / 2, y });
+    }
+  }
+
+  // group children by their hang point
+  const groups = new Map();
+  for (const [cid, h] of childHang) {
+    if (hidden.has(cid)) continue;
+    const gk = h.unit.members.join("|") + "::" + h.key;
+    if (!groups.has(gk)) groups.set(gk, { h, kids: [] });
+    groups.get(gk).kids.push(cid);
+  }
+  for (const { h, kids } of groups.values()) {
+    const hangX = h.unit.x + h.off;
+    const parentTopY = C.PAD + h.unit.level * C.ROW_H;
+    const hangY = h.dot ? parentTopY + C.CARD_H / 2 : parentTopY + C.CARD_H;
+    const trunkBot = parentTopY + C.CARD_H + C.V_GAP * 0.52;
+    const children = kids
+      .map(id => ({ id, x: pos.get(id).x + C.CARD_W / 2, y: pos.get(id).y }))
+      .sort((a, b) => a.x - b.x);
+    trunks.push({ x: hangX, y1: hangY, y2: trunkBot, children });
+  }
+  return { couples, dots, trunks };
 }
 
-const state = { scale: 1, panX: 0, panY: 0 };
+/* ---------- 7. ids & export ---------- */
 
-function applyTransform() {
-  document.getElementById('canvas').style.transform =
-    `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
-  document.getElementById('zoom-level').textContent = Math.round(state.scale * 100) + '%';
+function genId(model, firstName, lastName, birthDate) {
+  const has = id => model.byId.has(id);
+  const f = translitSlug(firstName) || "member";
+  const l = translitSlug(lastName);
+  const y = String(birthDate || "").match(/\d{4}/);
+  const cands = [f];
+  if (l) cands.push(f + "-" + l);
+  if (y) cands.push((l ? f + "-" + l : f) + "-" + y[0]);
+  for (const c of cands) if (!has(c)) return c;
+  const base = cands[cands.length - 1];
+  for (let i = 2; ; i++) if (!has(base + "-" + i)) return base + "-" + i;
 }
 
-function setScale(s) {
-  state.scale = Math.max(0.15, Math.min(3, s));
-  applyTransform();
+function serialize(model) {
+  return {
+    family: {
+      name: model.name || "",
+      anchor: model.anchor || undefined,
+      members: model.order.map(id => {
+        const m = model.byId.get(id);
+        const out = {
+          id: m.id,
+          firstName: m.firstName,
+          lastName: m.lastName,
+          birthDate: m.birthDate || "",
+          deathDate: m.deathDate === null ? null : (m.deathDate || ""),
+          gender: m.gender,
+          parents: m.parents.slice(),
+        };
+        if (m.partnersX.length) out.partners = m.partnersX.slice();
+        out.photo = m.photo || null;
+        out.notes = m.notes || "";
+        return out;
+      }),
+    },
+  };
 }
 
-function initInteract() {
-  const vp = document.getElementById('viewport');
-  let drag = null;
+const FT = { C, parseData, buildModel, computeLayout, buildConnectors, computeHidden,
+             genId, serialize, translitSlug, displayDates, birthYear };
+if (typeof module !== "undefined" && module.exports) module.exports = FT;
+/* CORE-END ================================================================= */
 
-  vp.addEventListener('mousedown', e => {
-    if (e.target.closest('.card')) return;
-    drag = { sx: e.clientX - state.panX, sy: e.clientY - state.panY };
-    vp.classList.add('grabbing');
+/* ============================================================================
+ * UI
+ * ==========================================================================*/
+if (typeof document !== "undefined") (function () {
+
+  const $ = id => document.getElementById(id);
+  const viewport = $("viewport"), world = $("world"), edges = $("edges"), cardsEl = $("cards");
+
+  const state = {
+    model: null,
+    collapsed: new Set(),
+    selected: null,
+    dirty: false,
+    view: { x: 40, y: 40, k: 1 },
+    editingId: null,        // null = adding
+  };
+
+  /* ---------- data loading ---------- */
+
+  function loadJSONText(text) {
+    let raw;
+    try { raw = JSON.parse(text); }
+    catch (e) { alert("Could not parse JSON: " + e.message); return; }
+    let parsed;
+    try { parsed = parseData(raw); }
+    catch (e) { alert(e.message); return; }
+    state.model = buildModel(parsed);
+    state.collapsed = new Set();
+    state.selected = null;
+    state.dirty = false;
+    showWarnings(parsed.warnings);
+    $("empty").classList.add("off");
+    for (const id of ["btnAdd","btnDownload","btnExpandAll","btnCollapseAll","btnZoomIn","btnZoomOut","btnFit","btnCenter"])
+      $(id).disabled = false;
+    closePanel();
+    render();
+    if (state.model.anchorEff) centerOn(state.model.anchorEff, 0.85, false);
+    else fitView();
+  }
+
+  function rebuild() {
+    // re-derive indexes/levels/sides after edits, preserving name/anchor
+    const m = state.model;
+    state.model = buildModel({ name: m.name, anchor: m.anchor, members: m.order.map(id => m.byId.get(id)), warnings: [] });
+  }
+
+  $("btnUpload").addEventListener("click", () => $("fileInput").click());
+  $("dropzone").addEventListener("click", () => $("fileInput").click());
+  $("fileInput").addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (f) f.text().then(loadJSONText);
+    e.target.value = "";
   });
-  window.addEventListener('mousemove', e => {
-    if (!drag) return;
-    state.panX = e.clientX - drag.sx;
-    state.panY = e.clientY - drag.sy;
-    applyTransform();
-  });
-  window.addEventListener('mouseup', () => {
-    drag = null;
-    vp.classList.remove('grabbing');
+  viewport.addEventListener("dragover", e => { e.preventDefault(); $("dropzone").classList.add("drag"); });
+  viewport.addEventListener("dragleave", () => $("dropzone").classList.remove("drag"));
+  viewport.addEventListener("drop", e => {
+    e.preventDefault(); $("dropzone").classList.remove("drag");
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) f.text().then(loadJSONText);
   });
 
-  vp.addEventListener('wheel', e => {
+  function showWarnings(list) {
+    const box = $("warnings");
+    if (!list.length) { box.classList.remove("on"); return; }
+    $("warningsList").innerHTML = list.slice(0, 8).map(w => `<li>${esc(w)}</li>`).join("")
+      + (list.length > 8 ? `<li>…and ${list.length - 8} more</li>` : "");
+    box.classList.add("on");
+  }
+  $("warnings").querySelector(".close").addEventListener("click", () => $("warnings").classList.remove("on"));
+
+  /* ---------- rendering ---------- */
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+  function render() {
+    const m = state.model;
+    if (!m) return;
+    $("familyTitle").textContent = m.name ? m.name + " — Family Tree" : "Family Tree";
+    $("memberCount").textContent = m.order.length + " members";
+
+    const layout = computeLayout(m, state.collapsed);
+    state.layout = layout;
+    const conn = buildConnectors(m, layout);
+
+    edges.setAttribute("width", layout.bounds.w);
+    edges.setAttribute("height", layout.bounds.h);
+    world.style.width = layout.bounds.w + "px";
+    world.style.height = layout.bounds.h + "px";
+
+    // connectors
+    let svg = "";
+    for (const c of conn.couples)
+      svg += `<line x1="${c.x1}" y1="${c.y}" x2="${c.x2}" y2="${c.y}"/>`;
+    for (const t of conn.trunks) {
+      svg += `<line x1="${t.x}" y1="${t.y1}" x2="${t.x}" y2="${t.y2}"/>`;
+      for (const ch of t.children) {
+        const h = ch.y - t.y2;
+        svg += `<path d="M ${t.x} ${t.y2} C ${t.x} ${t.y2 + h * 0.5}, ${ch.x} ${ch.y - h * 0.5}, ${ch.x} ${ch.y}"/>`;
+      }
+    }
+    for (const d of conn.dots)
+      svg += `<circle class="dot" cx="${d.x}" cy="${d.y}" r="4"/>`;
+    edges.innerHTML = svg;
+
+    // cards
+    let html = "";
+    for (const [id, p] of layout.pos) {
+      const mem = m.byId.get(id);
+      const hasKids = m.childrenOf.get(id).length > 0;
+      const isCollapsed = state.collapsed.has(id);
+      html += `<div class="card ${mem.gender}${state.selected === id ? " selected" : ""}" data-id="${esc(id)}" style="left:${p.x}px;top:${p.y}px">`
+        + (hasKids ? `<span class="chip" data-chip="${esc(id)}" title="${isCollapsed ? "Expand" : "Collapse"} branch">${isCollapsed ? "+" : "−"}</span>` : "")
+        + `<div class="nm">${esc(mem.firstName) || "&nbsp;"}</div>`
+        + `<div class="ln">${esc(mem.lastName) || "&nbsp;"}</div>`
+        + `<div class="dt">${esc(displayDates(mem))}</div>`
+        + `</div>`;
+    }
+    cardsEl.innerHTML = html;
+    applyView();
+  }
+
+  cardsEl.addEventListener("click", e => {
+    const chip = e.target.closest(".chip");
+    if (chip) { toggleCollapse(chip.dataset.chip); e.stopPropagation(); return; }
+    const card = e.target.closest(".card");
+    if (card) selectMember(card.dataset.id);
+  });
+
+  function toggleCollapse(id) {
+    const m = state.model;
+    const ids = [id, ...m.partnersOf.get(id)];
+    if (state.collapsed.has(id)) ids.forEach(x => state.collapsed.delete(x));
+    else ids.forEach(x => { if (m.childrenOf.get(x) && m.childrenOf.get(x).length) state.collapsed.add(x); });
+    render();
+  }
+
+  $("btnExpandAll").addEventListener("click", () => { state.collapsed.clear(); render(); });
+  $("btnCollapseAll").addEventListener("click", () => {
+    const m = state.model;
+    state.collapsed = new Set(m.order.filter(id => m.childrenOf.get(id).length));
+    render();
+  });
+
+  /* ---------- pan & zoom ---------- */
+
+  function applyView() {
+    const v = state.view;
+    world.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
+  }
+  function zoomAt(cx, cy, factor) {
+    const v = state.view;
+    const k = Math.min(2.5, Math.max(0.12, v.k * factor));
+    v.x = cx - (cx - v.x) * (k / v.k);
+    v.y = cy - (cy - v.y) * (k / v.k);
+    v.k = k;
+    applyView();
+  }
+  viewport.addEventListener("wheel", e => {
+    if (!state.model) return;
     e.preventDefault();
-    const delta = e.deltaY < 0 ? 1.1 : 0.9;
-    const rect = vp.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    // zoom toward mouse
-    state.panX = mx - (mx - state.panX) * delta;
-    state.panY = my - (my - state.panY) * delta;
-    setScale(state.scale * delta);
+    const r = viewport.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0016));
   }, { passive: false });
 
-  document.getElementById('btn-zoom-in').onclick  = () => setScale(state.scale * 1.2);
-  document.getElementById('btn-zoom-out').onclick = () => setScale(state.scale / 1.2);
-  document.getElementById('btn-zoom-reset').onclick = () => {
-    state.scale = 1; state.panX = 0; state.panY = 0; applyTransform();
-  };
-  document.getElementById('sc-close').onclick = () =>
-    document.getElementById('side-card').classList.remove('open');
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') document.getElementById('side-card').classList.remove('open');
+  let drag = null;
+  viewport.addEventListener("pointerdown", e => {
+    if (e.target.closest(".card") || e.target.closest("#panel") || e.target.closest("#empty")) return;
+    drag = { x: e.clientX, y: e.clientY, vx: state.view.x, vy: state.view.y };
+    viewport.classList.add("panning");
+    viewport.setPointerCapture(e.pointerId);
   });
-}
+  viewport.addEventListener("pointermove", e => {
+    if (!drag) return;
+    state.view.x = drag.vx + (e.clientX - drag.x);
+    state.view.y = drag.vy + (e.clientY - drag.y);
+    applyView();
+  });
+  viewport.addEventListener("pointerup", () => { drag = null; viewport.classList.remove("panning"); });
 
-// ═══════════════════════════════════════════════════════
-// MODULE: app.js — wire everything
-// ═══════════════════════════════════════════════════════
-let currentFamily = null;
-let currentModel  = null;
-let currentLayout = null;
-
-function load(raw) {
-  try {
-    const family = parseFamily(raw);
-    const model  = buildModel(family);
-    const layoutState = buildLayout(family, model);
-    currentFamily = family;
-    currentModel  = model;
-    currentLayout = layoutState;
-
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('family-name-label').textContent = family.name ? `Family: ${family.name}` : '';
-
-    render(family, model, layoutState);
-    centerView();
-  } catch (err) {
-    alert('Error loading file: ' + err.message);
+  function fitView() {
+    const b = state.layout && state.layout.bounds;
+    if (!b) return;
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const k = Math.min(vw / b.w, vh / b.h, 1.2) * 0.96;
+    state.view = { k, x: (vw - b.w * k) / 2, y: (vh - b.h * k) / 2 };
+    applyView();
   }
-}
+  function centerOn(id, k, flash = true) {
+    const p = state.layout && state.layout.pos.get(id);
+    if (!p) return;
+    const v = state.view;
+    if (k) v.k = k;
+    v.x = viewport.clientWidth / 2 - (p.x + C.CARD_W / 2) * v.k;
+    v.y = viewport.clientHeight / 2.4 - (p.y + C.CARD_H / 2) * v.k;
+    applyView();
+    if (flash) {
+      const el = cardsEl.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+      if (el) { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+    }
+  }
+  $("btnZoomIn").addEventListener("click", () => zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25));
+  $("btnZoomOut").addEventListener("click", () => zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 0.8));
+  $("btnFit").addEventListener("click", fitView);
+  $("btnCenter").addEventListener("click", () => state.model.anchorEff && centerOn(state.model.anchorEff, 0.85));
 
-function centerView() {
-  const vp = document.getElementById('viewport');
-  const canvas = document.getElementById('canvas');
-  const W = parseFloat(canvas.style.width)  || 800;
-  const H = parseFloat(canvas.style.height) || 600;
-  const vpW = vp.clientWidth;
-  const vpH = vp.clientHeight;
+  /* ---------- detail panel ---------- */
 
-  // fit to viewport
-  const scaleX = vpW / (W + 40);
-  const scaleY = vpH / (H + 40);
-  state.scale = Math.min(1, scaleX, scaleY);
-  state.panX = (vpW - W * state.scale) / 2;
-  state.panY = 20;
-  applyTransform();
-}
+  function selectMember(id) {
+    state.selected = id;
+    cardsEl.querySelectorAll(".card.selected").forEach(el => el.classList.remove("selected"));
+    const el = cardsEl.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+    if (el) el.classList.add("selected");
+    openPanel(id);
+  }
 
-document.getElementById('btn-expand-all').onclick = () => {
-  if (!currentLayout) return;
-  currentLayout.collapsed.clear();
-  render(currentFamily, currentModel, currentLayout);
-};
+  function relChips(ids) {
+    const m = state.model;
+    return ids.filter(id => m.byId.has(id)).map(id => {
+      const p = m.byId.get(id);
+      return `<button class="rel" data-goto="${esc(id)}">${esc((p.firstName + " " + p.lastName).trim() || id)}</button>`;
+    }).join("") || `<span style="color:var(--ink-soft);font-size:13px">—</span>`;
+  }
 
-document.getElementById('btn-collapse-all').onclick = () => {
-  if (!currentLayout) return;
-  currentFamily.members.forEach(m => {
-    if ((currentModel.childrenOf[m.id] || []).length > 0) currentLayout.collapsed.add(m.id);
+  function openPanel(id) {
+    const m = state.model, p = m.byId.get(id);
+    if (!p) return;
+    $("pName").textContent = (p.firstName + " " + p.lastName).trim() || p.id;
+    const kids = m.childrenOf.get(id);
+    const partners = [...m.partnersOf.get(id)];
+    $("pBody").innerHTML =
+      `<span class="badge ${p.gender}">${p.gender}</span>` +
+      `<div class="frow"><div class="lbl">Born</div><div class="val">${esc(p.birthDate || "unknown")}</div></div>` +
+      (p.deathDate === null ? "" :
+        `<div class="frow"><div class="lbl">Died</div><div class="val">${esc(p.deathDate || "unknown")}</div></div>`) +
+      `<div class="frow"><div class="lbl">Parents</div><div class="rels">${relChips(p.parents)}</div></div>` +
+      `<div class="frow"><div class="lbl">Partner</div><div class="rels">${relChips(partners)}</div></div>` +
+      `<div class="frow"><div class="lbl">Children</div><div class="rels">${relChips(kids)}</div></div>` +
+      (p.notes ? `<div class="frow"><div class="lbl">Notes</div><div class="val">${esc(p.notes)}</div></div>` : "") +
+      `<div class="frow"><div class="lbl">ID</div><div class="val" style="color:var(--ink-soft)">${esc(p.id)}</div></div>`;
+    $("panel").classList.add("open");
+  }
+  function closePanel() { $("panel").classList.remove("open"); state.selected = null; }
+  $("pClose").addEventListener("click", () => { $("panel").classList.remove("open"); state.selected = null;
+    cardsEl.querySelectorAll(".card.selected").forEach(el => el.classList.remove("selected")); });
+  $("pBody").addEventListener("click", e => {
+    const b = e.target.closest("[data-goto]");
+    if (!b) return;
+    const id = b.dataset.goto;
+    // expand ancestors if hidden
+    if (state.layout.hidden.has(id)) { state.collapsed.clear(); render(); }
+    selectMember(id);
+    centerOn(id, null, true);
   });
-  render(currentFamily, currentModel, currentLayout);
-};
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !$("editor").open) { $("panel").classList.remove("open"); state.selected = null; }
+  });
 
-document.getElementById('file-input').addEventListener('change', function() {
-  const file = this.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    try { load(JSON.parse(e.target.result)); }
-    catch(err) { alert('Invalid JSON: ' + err.message); }
-  };
-  reader.readAsText(file);
-  this.value = ''; // allow re-upload of same file
-});
+  /* ---------- editor ---------- */
 
-initInteract();
+  const editor = $("editor");
+
+  function memberOptions(exclude, selected) {
+    const m = state.model;
+    const opts = [`<option value="">— none —</option>`];
+    const sorted = m.order.slice().sort((a, b) => {
+      const na = (m.byId.get(a).firstName + m.byId.get(a).lastName), nb = (m.byId.get(b).firstName + m.byId.get(b).lastName);
+      return na.localeCompare(nb);
+    });
+    for (const id of sorted) {
+      if (exclude.has(id)) continue;
+      const p = m.byId.get(id);
+      opts.push(`<option value="${esc(id)}"${id === selected ? " selected" : ""}>${esc((p.firstName + " " + p.lastName).trim() || id)}</option>`);
+    }
+    return opts.join("");
+  }
+
+  function descendantsOf(id) {
+    const m = state.model, out = new Set();
+    const walk = x => { for (const c of m.childrenOf.get(x) || []) { if (!out.has(c)) { out.add(c); walk(c); } } };
+    walk(id);
+    return out;
+  }
+
+  function openEditor(id) {
+    const m = state.model;
+    state.editingId = id || null;
+    const p = id ? m.byId.get(id) : null;
+    $("edTitle").textContent = id ? "Edit member" : "Add member";
+    $("edFirst").value = p ? p.firstName : "";
+    $("edLast").value = p ? p.lastName : "";
+    $("edGender").value = p ? p.gender : "male";
+    $("edBirth").value = p ? p.birthDate : "";
+    $("edDeath").value = p ? (p.deathDate === null ? "" : p.deathDate) : "";
+    $("edNotes").value = p ? p.notes : "";
+    const exclude = new Set(id ? [id, ...descendantsOf(id)] : []);
+    $("edParent1").innerHTML = memberOptions(exclude, p ? p.parents[0] : "");
+    $("edParent2").innerHTML = memberOptions(exclude, p ? p.parents[1] : "");
+    $("edPartner").innerHTML = memberOptions(new Set(id ? [id] : []), p ? p.partnersX[0] || "" : "");
+    updateIdPreview();
+    editor.showModal();
+  }
+
+  function updateIdPreview() {
+    if (state.editingId) { $("edId").textContent = state.editingId; return; }
+    $("edId").textContent = state.model
+      ? genId(state.model, $("edFirst").value, $("edLast").value, $("edBirth").value)
+      : "—";
+  }
+  ["edFirst", "edLast", "edBirth"].forEach(f => $(f).addEventListener("input", updateIdPreview));
+
+  $("btnAdd").addEventListener("click", () => openEditor(null));
+  $("pEdit").addEventListener("click", () => state.selected && openEditor(state.selected));
+  $("edCancel").addEventListener("click", () => editor.close());
+
+  $("editorForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const m = state.model;
+    const first = $("edFirst").value.trim();
+    if (!first) { $("edFirst").focus(); return; }
+    const parents = [$("edParent1").value, $("edParent2").value].filter(Boolean);
+    if (parents.length === 2 && parents[0] === parents[1]) parents.pop();
+    const partner = $("edPartner").value;
+    const death = $("edDeath").value.trim();
+
+    if (state.editingId) {
+      const p = m.byId.get(state.editingId);
+      Object.assign(p, {
+        firstName: first, lastName: $("edLast").value.trim(),
+        gender: $("edGender").value,
+        birthDate: $("edBirth").value.trim(),
+        deathDate: death === "" ? null : death,
+        parents,
+        partnersX: partner ? [partner] : [],
+        notes: $("edNotes").value,
+      });
+    } else {
+      const id = genId(m, first, $("edLast").value, $("edBirth").value);
+      const p = {
+        id, firstName: first, lastName: $("edLast").value.trim(),
+        gender: $("edGender").value,
+        birthDate: $("edBirth").value.trim(),
+        deathDate: death === "" ? null : death,
+        parents, partnersX: partner ? [partner] : [],
+        photo: null, notes: $("edNotes").value,
+      };
+      m.order.push(id);
+      m.byId.set(id, p);
+      state.selected = id;
+    }
+    editor.close();
+    markDirty();
+    rebuild();
+    render();
+    if (state.selected) { selectMember(state.selected); centerOn(state.selected, null, true); }
+  });
+
+  $("pDelete").addEventListener("click", () => {
+    const id = state.selected, m = state.model;
+    if (!id) return;
+    const p = m.byId.get(id);
+    if (!confirm(`Delete ${(p.firstName + " " + p.lastName).trim() || id}? References to this person will be removed.`)) return;
+    m.order = m.order.filter(x => x !== id);
+    m.byId.delete(id);
+    for (const other of m.byId.values()) {
+      other.parents = other.parents.filter(x => x !== id);
+      other.partnersX = other.partnersX.filter(x => x !== id);
+    }
+    if (m.anchor === id) m.anchor = null;
+    state.collapsed.delete(id);
+    state.selected = null;
+    $("panel").classList.remove("open");
+    markDirty();
+    rebuild();
+    render();
+  });
+
+  /* ---------- export ---------- */
+
+  function markDirty() { state.dirty = true; $("dirtyDot").classList.add("on"); }
+
+  $("btnDownload").addEventListener("click", () => {
+    const data = serialize(state.model);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (translitSlug(state.model.name) || "family") + "-tree.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    state.dirty = false;
+    $("dirtyDot").classList.remove("on");
+  });
+
+  window.addEventListener("beforeunload", e => {
+    if (state.dirty) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  window.addEventListener("resize", () => state.model && applyView());
+})();
 </script>
 </body>
 </html>
